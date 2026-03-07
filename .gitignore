@@ -1,0 +1,14 @@
+# AutoHotkey
+*.exe
+*.log
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE / Editor
+.vscode/
+*.swp
+*.swo
+*~
