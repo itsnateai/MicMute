@@ -51,16 +51,22 @@ global g_unmuteSound   := ""           ; custom .wav for unmute feedback (F-04)
 global g_muteLock      := false        ; prevent external apps from changing mute state (F-11)
 global g_lockDebounce  := false        ; skip one sync cycle after enforcement (F-11)
 global g_hybridThreshold := 300        ; ms threshold: short press=toggle, long press=PTT (F-06)
+global g_hybridPTTActive := false      ; set by timer when PTT activates in hybrid mode (F-06)
 global g_osdEnabled    := false        ; show floating overlay on toggle (F-02)
 global g_osdPosition   := "bottom"     ; OSD position: "top", "bottom", "center" (F-02)
 global g_osdDuration   := 1500         ; OSD display time in ms (F-02)
 global g_osdGui        := 0            ; GUI object reference for current OSD (F-02)
 global g_deafenHotkey  := ""           ; separate hotkey for deafen mode (F-20)
 global g_deafened      := false        ; true when deafened (mic + speakers muted) (F-20)
+global g_ledInitialState := false      ; LED state at startup, for cleanup restore (F-16)
 global g_speakerWasMuted := false      ; remember speaker state before deafen (F-20)
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
+
+; Save LED state at startup before MicMute starts toggling it (F-16)
+if (g_ledIndicator != "")
+    g_ledInitialState := GetKeyState(g_ledIndicator, "T")
 
 ; ── AUDIO SETUP ──────────────────────────────────────────────────────────────
 ; Uses Windows Core Audio (IAudioEndpointVolume) via proper CoCreateInstance.
@@ -181,7 +187,8 @@ PlayFeedback() {
         return
     soundFile := g_muted ? g_muteSound : g_unmuteSound
     if (soundFile != "" && FileExist(soundFile)) {
-        try SoundPlay(soundFile)
+        try
+            SoundPlay(soundFile, true)   ; synchronous — throws on bad file
         catch
             SoundBeep(g_muted ? 400 : 800, 100)   ; fallback on error
     } else {
@@ -211,7 +218,17 @@ ShowOSD() {
     ; Show first to get dimensions, then reposition
     osd.Show("NoActivate AutoSize")
     osd.GetPos(, , &osdW, &osdH)
-    MonitorGetWorkArea(, &workL, &workT, &workR, &workB)
+    ; Find the monitor the mouse cursor is on (multi-monitor aware)
+    MouseGetPos(&mx, &my)
+    monNum := 1
+    loop MonitorGetCount() {
+        MonitorGetWorkArea(A_Index, &_l, &_t, &_r, &_b)
+        if (mx >= _l && mx < _r && my >= _t && my < _b) {
+            monNum := A_Index
+            break
+        }
+    }
+    MonitorGetWorkArea(monNum, &workL, &workT, &workR, &workB)
     xPos := workL + ((workR - workL - osdW) // 2)
     if (g_osdPosition = "top")
         yPos := workT + 50
@@ -220,7 +237,7 @@ ShowOSD() {
     else   ; bottom (default)
         yPos := workB - osdH - 50
     osd.Show("NoActivate x" xPos " y" yPos " w" osdW " h" osdH)
-    WinSetTransparent(200, osd)
+    WinSetTransparent(200, "ahk_id " osd.Hwnd)
     g_osdGui := osd
     SetTimer(DismissOSD, -g_osdDuration)
 }
@@ -442,25 +459,26 @@ PushToMute() {
 ; On key-down, starts a delayed timer. If key released before timer fires,
 ; it's a toggle. If timer fires while held, unmute (PTT) until release.
 HybridMode() {
-    global g_hotkey, g_hybridThreshold
-    downTick := A_TickCount
+    global g_hotkey, g_hybridThreshold, g_hybridPTTActive
+    g_hybridPTTActive := false
     ; Start delayed PTT activation — fires only if key is still held
     SetTimer(HybridPTTActivate, -g_hybridThreshold)
     keyName := ExtractKeyName(g_hotkey)
     KeyWait(keyName, "T30")   ; block until key release (30s safety)
-    elapsed := A_TickCount - downTick
-    if (elapsed < g_hybridThreshold) {
-        ; Short press — cancel PTT timer, perform a toggle
-        SetTimer(HybridPTTActivate, 0)
-        ToggleMute()
-    } else {
+    SetTimer(HybridPTTActivate, 0)   ; cancel timer if it hasn't fired
+    if g_hybridPTTActive {
         ; Long press — PTT was activated by timer; re-mute on release
         SetMuteState(true)
+    } else {
+        ; Short press — timer never fired, perform a toggle
+        ToggleMute()
     }
 }
 
 ; Timer callback for hybrid mode — unmute when threshold elapses (key still held).
 HybridPTTActivate() {
+    global g_hybridPTTActive
+    g_hybridPTTActive := true
     SetMuteState(false)
 }
 
@@ -514,17 +532,21 @@ ToggleDeafen() {
         return
     if !g_deafened {
         ; Enter deafen: mute mic + mute speakers
-        g_speakerWasMuted := SoundGetMute()   ; remember current speaker state
+        try
+            g_speakerWasMuted := SoundGetMute()   ; remember current speaker state
+        catch
+            g_speakerWasMuted := false
         if !g_muted
             SetMuteState(true)
-        SoundSetMute(true)   ; mute speakers
+        try SoundSetMute(true)   ; mute speakers
         g_deafened := true
         SetTrayIcon()        ; update tooltip suffix
         TrayTip("DEAFENED — mic + speakers muted", "MicMute", "Icon!")
     } else {
         ; Exit deafen: unmute mic + restore speakers
+        g_lockDebounce := true   ; prevent mute lock from immediately re-muting
         SetMuteState(false)
-        SoundSetMute(g_speakerWasMuted)   ; restore previous speaker state
+        try SoundSetMute(g_speakerWasMuted)   ; restore previous speaker state
         g_deafened := false
         SetTrayIcon()        ; update tooltip suffix
         TrayTip("Undeafened — audio restored", "MicMute", "Iconi")
@@ -978,12 +1000,15 @@ Cleanup(*) {
     ; Restore speaker state if deafened (F-20)
     if g_deafened
         try SoundSetMute(g_speakerWasMuted)
-    ; Restore LED state if we were controlling it (F-16)
-    if (g_ledIndicator != "" && GetKeyState(g_ledIndicator, "T"))
-        SendInput("{" g_ledIndicator "}")
+    ; Restore LED to its pre-MicMute state (F-16)
+    if (g_ledIndicator != "") {
+        currentLED := GetKeyState(g_ledIndicator, "T")
+        if (currentLED != g_ledInitialState)
+            SendInput("{" g_ledIndicator "}")
+    }
     ; Unmute mic on exit to prevent "dead mic" after quitting (F-10)
     if g_unmuteOnExit && g_pAEV && g_muted
-        ComCall(14, g_pAEV, "Int", false, "Ptr", 0, "Int")   ; SetMute(false)
+        try ComCall(14, g_pAEV, "Int", false, "Ptr", 0, "Int")   ; SetMute(false)
     if g_muteOnLock
         DllCall("Wtsapi32\WTSUnRegisterSessionNotification", "Ptr", A_ScriptHwnd)
     if g_pAEV
