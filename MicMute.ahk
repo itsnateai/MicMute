@@ -488,6 +488,51 @@ FormatModeName(mode) {
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
+; ║  Live hotkey rebinding (F-13)                                            ║
+; ╚══════════════════════════════════════════════════════════════════════════╝
+
+; Open a dialog to change the global hotkey at runtime.
+; Provides both a Hotkey control (for standard combos) and a text input
+; (for Win key combos like #+a that the Hotkey control doesn't support).
+ShowHotkeyDialog() {
+    global g_hotkey
+    dlg := Gui("+AlwaysOnTop", "MicMute — Change Hotkey")
+    dlg.SetFont("s10", "Segoe UI")
+    dlg.Add("Text", , "Press a key combination:")
+    hkCtrl := dlg.Add("Hotkey", "w250 vNewHotkey")
+    dlg.Add("Text", "y+15", "Or type AHK syntax (e.g. #+a for Win+Shift+A):")
+    txtCtrl := dlg.Add("Edit", "w250 vRawHotkey")
+    dlg.Add("Text", "y+10 cGray", "Current: " HotkeyToReadable(g_hotkey))
+    btnOK := dlg.Add("Button", "Default w80 y+15", "OK")
+    btnCancel := dlg.Add("Button", "x+10 w80", "Cancel")
+    btnOK.OnEvent("Click", (*) => ApplyNewHotkey(dlg, hkCtrl, txtCtrl))
+    btnCancel.OnEvent("Click", (*) => dlg.Destroy())
+    dlg.OnEvent("Close", (*) => dlg.Destroy())
+    dlg.Show()
+}
+
+ApplyNewHotkey(dlg, hkCtrl, txtCtrl) {
+    global g_hotkey
+    ; Prefer raw text input (supports Win key combos), fall back to Hotkey control
+    rawHK := Trim(txtCtrl.Value)
+    newHK := (rawHK != "") ? rawHK : hkCtrl.Value
+    if (newHK = "") {
+        MsgBox("No hotkey entered. Keeping current hotkey.", "MicMute", "Icon!")
+        return
+    }
+    ; Unregister old hotkey
+    try Hotkey(g_hotkey, "Off")
+    try Hotkey(g_hotkey " Up", "Off")
+    g_hotkey := newHK
+    RegisterHotkey()
+    BuildTrayMenu()
+    SaveConfig()
+    dlg.Destroy()
+    TrayTip("Hotkey changed to: " HotkeyToReadable(g_hotkey), "MicMute", "Iconi")
+    SetTimer(() => TrayTip(), -3000)
+}
+
+; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  Audio device selector (P2-02)                                           ║
 ; ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -610,6 +655,7 @@ BuildTrayMenu() {
     A_TrayMenu.Add("Toggle Mute",       (*) => ToggleMute())
     A_TrayMenu.Add(hotkeyLabel,          (*) => 0)
     A_TrayMenu.Disable(hotkeyLabel)
+    A_TrayMenu.Add("Change Hotkey…",     (*) => ShowHotkeyDialog())
     A_TrayMenu.Add()
 
     ; ── Mode submenu (P2-01) ──
