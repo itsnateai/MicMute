@@ -2,6 +2,21 @@
 
 All notable changes to MicMute are documented here.
 
+## [1.2.0] - 2026-03-08
+
+### Added
+- **P2-01**: Push-to-talk / push-to-mute mode — hold hotkey to temporarily unmute (PTT) or mute (PTM), with 30s safety timeout
+- **P2-02**: Audio device selector — tray submenu enumerates capture devices via COM IMMDeviceEnumerator, persists choice in INI
+- **P4-03**: Tray icon flash on toggle — 3-cycle flash animation draws attention to mute state changes
+
+### Changed
+- Version bumped to 1.2.0
+- Tray menu now includes Mode submenu (Toggle / Push-to-Talk / Push-to-Mute) and Microphone submenu (device picker)
+- MicMute.ini now stores Mode and DeviceId settings
+- InitMicEndpoint supports specific device ID via IMMDeviceEnumerator::GetDevice, falls back to system default
+- ExtractKeyName strips all AHK prefix characters (~*$<> in addition to #^!+)
+- FlashIcon restarts cleanly on overlapping toggles instead of dropping the second flash
+
 ## [1.1.0] - 2026-03-08
 
 ### Fixed

@@ -11,6 +11,9 @@ Mutes and unmutes your default microphone at the OS level using a global hotkey.
 - **Left-click** tray icon to toggle
 - **Right-click** tray icon for full menu
 - **Sound feedback**: audible beep on toggle (low tone = muted, high tone = active)
+- **Icon flash**: tray icon flashes briefly on toggle for visibility
+- **Modes**: Toggle (default), Push-to-Talk, Push-to-Mute
+- **Device selector**: pick which microphone to control from the tray menu
 - **Auto-detect**: automatically reconnects when you plug in or switch microphones
 - **External sync**: tray icon stays accurate even when other apps change your mic state
 
@@ -38,6 +41,8 @@ Settings are stored in `MicMute.ini` (auto-created when you change settings via 
 Hotkey=#+a
 SoundFeedback=1
 MuteOnLock=0
+Mode=toggle
+DeviceId=
 ```
 
 | Setting | Default | Description |
@@ -45,6 +50,8 @@ MuteOnLock=0
 | `Hotkey` | `#+a` (Win+Shift+A) | Global mute toggle hotkey |
 | `SoundFeedback` | `1` | Audible beep on toggle (0 to disable) |
 | `MuteOnLock` | `0` | Auto-mute mic when PC locks (Win+L) |
+| `Mode` | `toggle` | Hotkey mode: `toggle`, `push-to-talk`, or `push-to-mute` |
+| `DeviceId` | _(empty)_ | Specific mic device ID (empty = system default) |
 
 ### Hotkey Syntax
 
@@ -63,12 +70,20 @@ If the hotkey string is invalid, MicMute falls back to tray-only mode (left-clic
 |------|--------|
 | Toggle Mute | Mute/unmute the mic |
 | Hotkey: ... | Shows current hotkey (informational) |
+| Mode → | Submenu: Toggle, Push-to-Talk, Push-to-Mute |
+| Microphone → | Submenu: System Default + detected devices |
 | Sound Feedback | Toggle audible beep on mute/unmute |
 | Run at Startup | Toggle Windows startup shortcut |
 | Reinitialise Mic | Manually reconnect to audio device |
 | Sound Settings... | Open Windows Sound Settings |
-| v1.1.0 | Version (informational) |
+| v1.2.0 | Version (informational) |
 | Exit | Close MicMute |
+
+### Modes
+
+- **Toggle** (default): Press the hotkey to flip mute on/off.
+- **Push-to-Talk**: Hold the hotkey to unmute. Release to re-mute. (30s safety timeout)
+- **Push-to-Mute**: Hold the hotkey to mute. Release to re-unmute. (30s safety timeout)
 
 ## How It Works
 
