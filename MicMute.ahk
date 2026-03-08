@@ -39,9 +39,16 @@ global g_hotkey := "#+a"
 
 global g_pAEV := InitMicEndpoint()
 
+; Register cleanup BEFORE any further COM calls so the pointer
+; is always released even if something below throws.
+OnExit(Cleanup)
+
 ; Read initial mute state
-ComCall(15, g_pAEV, "Int*", &_initMuted := 0)   ; GetMute
-global g_muted := (_initMuted != 0)
+global g_muted := false
+if g_pAEV {
+    hr := ComCall(15, g_pAEV, "Int*", &_initMuted := 0, "Int")   ; GetMute
+    g_muted := (hr = 0 && _initMuted != 0)
+}
 
 ; ── TRAY ICONS ───────────────────────────────────────────────────────────────
 ; Place mic_on.ico and mic_off.ico in the same folder as this script.
@@ -69,7 +76,11 @@ Hotkey(g_hotkey, (*) => ToggleMute())
 Sleep(150)
 SyncTray()
 
-OnExit(Cleanup)
+; Show a brief tooltip if no mic was found so the user knows what's up
+if !g_pAEV {
+    TrayTip("No microphone detected.`nPlug one in and use Tray → Reinitialise Mic.", "MicMute", "Icon!")
+    SetTimer(() => TrayTip(), -5000)   ; dismiss after 5 seconds
+}
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  Core functions                                                          ║
@@ -117,9 +128,11 @@ ReinitMic() {
     if !g_pAEV
         return   ; InitMicEndpoint already showed an error box
     ; Re-read the current mute state from the new endpoint
-    ComCall(15, g_pAEV, "Int*", &_muted := 0)
-    g_muted := (_muted != 0)
+    hr := ComCall(15, g_pAEV, "Int*", &_muted := 0, "Int")   ; GetMute
+    g_muted := (hr = 0 && _muted != 0)
     SyncTray()
+    TrayTip("Microphone reinitialised.", "MicMute", "Iconi")
+    SetTimer(() => TrayTip(), -3000)
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -145,6 +158,8 @@ HotkeyToReadable(hk) {
 }
 
 ; Initialise IAudioEndpointVolume for the default capture (mic) device.
+; Returns the COM pointer on success, or 0 on failure (shows a message box
+; but does NOT exit — the script stays alive so the user can reinitialise).
 InitMicEndpoint() {
     CLSID_MMEnum := Buffer(16)
     IID_MMEnum   := Buffer(16)
@@ -161,22 +176,22 @@ InitMicEndpoint() {
         "Ptr*", &pEnum := 0,
         "Int")
     if (hr != 0 || !pEnum) {
-        MsgBox("CoCreateInstance failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF), "MicMute", "IconX")
-        ExitApp()
+        MsgBox("CoCreateInstance failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nUse Tray → Reinitialise Mic after connecting a microphone.", "MicMute", "Icon!")
+        return 0
     }
 
     hr := ComCall(4, pEnum, "UInt", 1, "UInt", 0, "Ptr*", &pDev := 0, "Int")
     ObjRelease(pEnum)
     if (hr != 0 || !pDev) {
-        MsgBox("GetDefaultAudioEndpoint failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nMake sure a microphone is connected.", "MicMute", "IconX")
-        ExitApp()
+        MsgBox("GetDefaultAudioEndpoint failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nMake sure a microphone is connected, then use Tray → Reinitialise Mic.", "MicMute", "Icon!")
+        return 0
     }
 
     hr := ComCall(3, pDev, "Ptr", IID_AEV, "UInt", 23, "Ptr", 0, "Ptr*", &pAEV := 0, "Int")
     ObjRelease(pDev)
     if (hr != 0 || !pAEV) {
-        MsgBox("Activate IAudioEndpointVolume failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF), "MicMute", "IconX")
-        ExitApp()
+        MsgBox("Activate IAudioEndpointVolume failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nUse Tray → Reinitialise Mic to retry.", "MicMute", "Icon!")
+        return 0
     }
 
     return pAEV

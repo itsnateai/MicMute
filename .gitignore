@@ -7,6 +7,11 @@ Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
+# Task Management
+AUDIT_TASKS.md
+TODO_LIST.md
+SCHEDULED_TASKS.md
+
 # IDE / Editor
 .vscode/
 *.swp
