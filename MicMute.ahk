@@ -1,6 +1,6 @@
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  MicMute.ahk  —  Global microphone mute toggle                         ║
-; ║  Version: 1.2.0                                                         ║
+; ║  Version: 1.3.0                                                         ║
 ; ║  Requires: AutoHotKey v2  (https://www.autohotkey.com/)                ║
 ; ║                                                                          ║
 ; ║  • Left-click  tray icon  → toggle mute                                 ║
@@ -9,9 +9,14 @@
 ; ║  • Green icon = mic active  |  Red icon = mic muted                     ║
 ; ║                                                                          ║
 ; ║  Modes:                                                                  ║
-; ║    Toggle (default) — press hotkey to flip mute on/off                  ║
-; ║    Push-to-Talk     — hold hotkey to unmute, release to re-mute         ║
-; ║    Push-to-Mute     — hold hotkey to mute, release to re-unmute        ║
+; ║    Toggle (default)    — press hotkey to flip mute on/off               ║
+; ║    Push-to-Talk        — hold hotkey to unmute, release to re-mute      ║
+; ║    Push-to-Mute        — hold hotkey to mute, release to re-unmute     ║
+; ║    Hybrid (PTT/Toggle) — short press = toggle, long press = PTT        ║
+; ║                                                                          ║
+; ║  Features:                                                               ║
+; ║    Custom sounds, OSD overlay, mute lock, LED sync, deafen mode,       ║
+; ║    live hotkey rebinding, custom icon colors, unmute on exit            ║
 ; ║                                                                          ║
 ; ║  Files (place in the same folder as this script):                       ║
 ; ║    mic_on.ico   — shown when mic is active  (falls back to AHK default) ║
@@ -28,7 +33,7 @@ Persistent
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
-global g_version := "1.2.0"
+global g_version := "1.3.0"
 
 ;  Defaults — overridden by MicMute.ini if present.
 ;  Change g_hotkey to whatever combo you prefer.

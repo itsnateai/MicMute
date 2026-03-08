@@ -2,6 +2,27 @@
 
 All notable changes to MicMute are documented here.
 
+## [1.3.0] - 2026-03-08
+
+### Added
+- **F-02**: On-screen display — floating MUTED/ACTIVE overlay on toggle, multi-monitor aware, click-through, configurable position and duration
+- **F-04**: Custom sound files — replace default beep with .wav files via MuteSound/UnmuteSound config, with beep fallback
+- **F-06**: Hybrid PTT/Toggle mode — short press (<300ms) toggles, long press activates push-to-talk, eliminates mode switching
+- **F-10**: Unmute on exit — auto-unmutes mic in Cleanup() before releasing COM, prevents "dead mic" after quitting
+- **F-11**: Mute lock — prevents external apps from changing mute state, with debounce to avoid infinite toggle war
+- **F-13**: Live hotkey rebinding — "Change Hotkey..." dialog in tray menu, supports both standard and Win key combos
+- **F-16**: Keyboard LED sync — sync ScrollLock/CapsLock/NumLock with mute state, saves and restores initial LED state
+- **F-17**: Accessible icon colors — configurable .ico paths via IconMuted/IconActive for colorblind users
+- **F-20**: Deafen mode — separate hotkey mutes mic + speakers simultaneously, restores speaker state on un-deafen
+
+### Changed
+- Version bumped to 1.3.0
+- Tray menu now includes Change Hotkey, Mute Lock, On-Screen Display items
+- Mode submenu now includes Hybrid (PTT/Toggle) option
+- MicMute.ini now stores 12 additional config keys (all backward-compatible defaults)
+- SoundBeep calls replaced with PlayFeedback() function supporting custom WAV files
+- Header comment block updated with full feature list
+
 ## [1.2.0] - 2026-03-08
 
 ### Added
