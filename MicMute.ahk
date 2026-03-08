@@ -55,6 +55,9 @@ global g_osdEnabled    := false        ; show floating overlay on toggle (F-02)
 global g_osdPosition   := "bottom"     ; OSD position: "top", "bottom", "center" (F-02)
 global g_osdDuration   := 1500         ; OSD display time in ms (F-02)
 global g_osdGui        := 0            ; GUI object reference for current OSD (F-02)
+global g_deafenHotkey  := ""           ; separate hotkey for deafen mode (F-20)
+global g_deafened      := false        ; true when deafened (mic + speakers muted) (F-20)
+global g_speakerWasMuted := false      ; remember speaker state before deafen (F-20)
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
@@ -99,6 +102,7 @@ BuildTrayMenu()
 ; ── HOTKEY ───────────────────────────────────────────────────────────────────
 ; Validate the hotkey string — fall back to tray-only mode on error (P0-03).
 RegisterHotkey()
+RegisterDeafenHotkey()
 
 ; ── INITIALISE ICON ──────────────────────────────────────────────────────────
 ; Brief delay so the shell has time to register the new tray icon
@@ -239,21 +243,22 @@ SyncTray() {
 
 ; Actually apply the icon/tooltip based on current g_muted state.
 SetTrayIcon() {
-    global g_muted, g_icoGreen, g_icoRed, g_version
+    global g_muted, g_icoGreen, g_icoRed, g_version, g_deafened
+    suffix := g_deafened ? " [DEAFENED]" : ""
     if g_muted {
         ; Red / muted — use custom icon or fall back to a built-in "blocked" icon
         if (g_icoRed != "")
             TraySetIcon(g_icoRed)
         else
             TraySetIcon("shell32.dll", 131)
-        A_IconTip := "MicMute v" g_version " — Mic: MUTED"
+        A_IconTip := "MicMute v" g_version " — Mic: MUTED" suffix
     } else {
         ; Green / active — use custom icon or fall back to a built-in microphone icon
         if (g_icoGreen != "")
             TraySetIcon(g_icoGreen)
         else
             TraySetIcon("imageres.dll", 109)
-        A_IconTip := "MicMute v" g_version " — Mic: Active"
+        A_IconTip := "MicMute v" g_version " — Mic: Active" suffix
     }
     SyncLED()
 }
@@ -485,6 +490,46 @@ FormatModeName(mode) {
     if (mode = "hybrid")
         return "Hybrid (PTT/Toggle)"
     return "Toggle"
+}
+
+; ╔══════════════════════════════════════════════════════════════════════════╗
+; ║  Deafen mode — mic + speakers (F-20)                                     ║
+; ╚══════════════════════════════════════════════════════════════════════════╝
+
+RegisterDeafenHotkey() {
+    global g_deafenHotkey
+    if (g_deafenHotkey = "")
+        return
+    try {
+        Hotkey(g_deafenHotkey, (*) => ToggleDeafen())
+    } catch as e {
+        TrayTip("Invalid deafen hotkey: " g_deafenHotkey, "MicMute", "Icon!")
+        SetTimer(() => TrayTip(), -5000)
+    }
+}
+
+ToggleDeafen() {
+    global g_pAEV, g_muted, g_deafened, g_speakerWasMuted
+    if !g_pAEV
+        return
+    if !g_deafened {
+        ; Enter deafen: mute mic + mute speakers
+        g_speakerWasMuted := SoundGetMute()   ; remember current speaker state
+        if !g_muted
+            SetMuteState(true)
+        SoundSetMute(true)   ; mute speakers
+        g_deafened := true
+        SetTrayIcon()        ; update tooltip suffix
+        TrayTip("DEAFENED — mic + speakers muted", "MicMute", "Icon!")
+    } else {
+        ; Exit deafen: unmute mic + restore speakers
+        SetMuteState(false)
+        SoundSetMute(g_speakerWasMuted)   ; restore previous speaker state
+        g_deafened := false
+        SetTrayIcon()        ; update tooltip suffix
+        TrayTip("Undeafened — audio restored", "MicMute", "Iconi")
+    }
+    SetTimer(() => TrayTip(), -3000)
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -800,6 +845,7 @@ LoadConfig() {
         g_osdPosition := "bottom"
     if (g_osdDuration < 500)
         g_osdDuration := 500
+    g_deafenHotkey  := Trim(IniRead(ini, "General", "DeafenHotkey", ""))
     ; Validate mode
     if (g_mode != "toggle" && g_mode != "push-to-talk" && g_mode != "push-to-mute" && g_mode != "hybrid")
         g_mode := "toggle"
@@ -825,6 +871,7 @@ SaveConfig() {
     IniWrite(g_muteLock ? "1" : "0", ini, "General", "MuteLock")
     IniWrite(g_muteSound, ini, "General", "MuteSound")
     IniWrite(g_unmuteSound, ini, "General", "UnmuteSound")
+    IniWrite(g_deafenHotkey, ini, "General", "DeafenHotkey")
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -927,6 +974,10 @@ InitMicEndpoint(silent := false) {
 ; Release COM handle and clean up on exit.
 Cleanup(*) {
     global g_pAEV, g_muteOnLock, g_unmuteOnExit, g_muted, g_ledIndicator
+    global g_deafened, g_speakerWasMuted
+    ; Restore speaker state if deafened (F-20)
+    if g_deafened
+        try SoundSetMute(g_speakerWasMuted)
     ; Restore LED state if we were controlling it (F-16)
     if (g_ledIndicator != "" && GetKeyState(g_ledIndicator, "T"))
         SendInput("{" g_ledIndicator "}")
