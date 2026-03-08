@@ -1,6 +1,7 @@
 # AutoHotkey
 *.exe
 *.log
+*.ini
 
 # Windows
 Thumbs.db
