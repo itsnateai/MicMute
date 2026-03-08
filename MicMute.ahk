@@ -51,6 +51,10 @@ global g_unmuteSound   := ""           ; custom .wav for unmute feedback (F-04)
 global g_muteLock      := false        ; prevent external apps from changing mute state (F-11)
 global g_lockDebounce  := false        ; skip one sync cycle after enforcement (F-11)
 global g_hybridThreshold := 300        ; ms threshold: short press=toggle, long press=PTT (F-06)
+global g_osdEnabled    := false        ; show floating overlay on toggle (F-02)
+global g_osdPosition   := "bottom"     ; OSD position: "top", "bottom", "center" (F-02)
+global g_osdDuration   := 1500         ; OSD display time in ms (F-02)
+global g_osdGui        := 0            ; GUI object reference for current OSD (F-02)
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
@@ -144,6 +148,7 @@ ToggleMute() {
     g_muted := newState
     SyncTray()
     FlashIcon()
+    ShowOSD()
     PlayFeedback()
 }
 
@@ -160,6 +165,7 @@ SetMuteState(muted) {
     g_muted := muted
     SyncTray()
     FlashIcon()
+    ShowOSD()
     PlayFeedback()
 }
 
@@ -176,6 +182,50 @@ PlayFeedback() {
             SoundBeep(g_muted ? 400 : 800, 100)   ; fallback on error
     } else {
         SoundBeep(g_muted ? 400 : 800, 100)
+    }
+}
+
+; Show an on-screen display overlay indicating mute state (F-02).
+; Borderless, always-on-top, click-through GUI that auto-dismisses.
+ShowOSD() {
+    global g_muted, g_osdEnabled, g_osdPosition, g_osdDuration, g_osdGui
+    if !g_osdEnabled
+        return
+    ; Destroy previous OSD if still showing
+    if g_osdGui {
+        try g_osdGui.Destroy()
+        g_osdGui := 0
+    }
+    ; Create borderless, always-on-top, click-through GUI
+    osd := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20")
+    osd.BackColor := g_muted ? "CC0000" : "00AA00"
+    osd.MarginX := 20
+    osd.MarginY := 10
+    label := g_muted ? "MUTED" : "ACTIVE"
+    osd.SetFont("s24 cFFFFFF bold", "Segoe UI")
+    osd.Add("Text", "Center", label)
+    ; Show first to get dimensions, then reposition
+    osd.Show("NoActivate AutoSize")
+    osd.GetPos(, , &osdW, &osdH)
+    MonitorGetWorkArea(, &workL, &workT, &workR, &workB)
+    xPos := workL + ((workR - workL - osdW) // 2)
+    if (g_osdPosition = "top")
+        yPos := workT + 50
+    else if (g_osdPosition = "center")
+        yPos := workT + ((workB - workT - osdH) // 2)
+    else   ; bottom (default)
+        yPos := workB - osdH - 50
+    osd.Show("NoActivate x" xPos " y" yPos " w" osdW " h" osdH)
+    WinSetTransparent(200, osd)
+    g_osdGui := osd
+    SetTimer(DismissOSD, -g_osdDuration)
+}
+
+DismissOSD() {
+    global g_osdGui
+    if g_osdGui {
+        try g_osdGui.Destroy()
+        g_osdGui := 0
     }
 }
 
@@ -600,6 +650,9 @@ BuildTrayMenu() {
     A_TrayMenu.Add("Mute Lock",          (*) => ToggleMuteLock())
     if g_muteLock
         A_TrayMenu.Check("Mute Lock")
+    A_TrayMenu.Add("On-Screen Display",  (*) => ToggleOSD())
+    if g_osdEnabled
+        A_TrayMenu.Check("On-Screen Display")
     A_TrayMenu.Add()
     A_TrayMenu.Add("Run at Startup",     (*) => ToggleStartup())
     if FileExist(A_Startup "\MicMute.lnk")
@@ -636,6 +689,16 @@ ToggleMuteLock() {
     SaveConfig()
     TrayTip("Mute Lock: " (g_muteLock ? "ON" : "OFF"), "MicMute", "Iconi")
     SetTimer(() => TrayTip(), -3000)
+}
+
+ToggleOSD() {
+    global g_osdEnabled
+    g_osdEnabled := !g_osdEnabled
+    if g_osdEnabled
+        A_TrayMenu.Check("On-Screen Display")
+    else
+        A_TrayMenu.Uncheck("On-Screen Display")
+    SaveConfig()
 }
 
 ToggleStartup() {
@@ -684,6 +747,13 @@ LoadConfig() {
     g_hybridThreshold := Integer(Trim(IniRead(ini, "General", "HybridThreshold", "300")))
     if (g_hybridThreshold < 50)
         g_hybridThreshold := 50   ; floor to prevent accidental zero
+    g_osdEnabled    := (Trim(IniRead(ini, "General", "OSD_Enabled", "0")) = "1")
+    g_osdPosition   := StrLower(Trim(IniRead(ini, "General", "OSD_Position", "bottom")))
+    g_osdDuration   := Integer(Trim(IniRead(ini, "General", "OSD_Duration", "1500")))
+    if (g_osdPosition != "top" && g_osdPosition != "bottom" && g_osdPosition != "center")
+        g_osdPosition := "bottom"
+    if (g_osdDuration < 500)
+        g_osdDuration := 500
     ; Validate mode
     if (g_mode != "toggle" && g_mode != "push-to-talk" && g_mode != "push-to-mute" && g_mode != "hybrid")
         g_mode := "toggle"
@@ -703,6 +773,9 @@ SaveConfig() {
     IniWrite(g_iconActive, ini, "General", "IconActive")
     IniWrite(g_ledIndicator, ini, "General", "LEDIndicator")
     IniWrite(g_hybridThreshold, ini, "General", "HybridThreshold")
+    IniWrite(g_osdEnabled ? "1" : "0", ini, "General", "OSD_Enabled")
+    IniWrite(g_osdPosition, ini, "General", "OSD_Position")
+    IniWrite(g_osdDuration, ini, "General", "OSD_Duration")
     IniWrite(g_muteLock ? "1" : "0", ini, "General", "MuteLock")
     IniWrite(g_muteSound, ini, "General", "MuteSound")
     IniWrite(g_unmuteSound, ini, "General", "UnmuteSound")
