@@ -118,7 +118,7 @@ ToggleMute() {
     }
     newState := !g_muted
     hr := ComCall(14, g_pAEV, "Int", newState, "Ptr", 0, "Int")   ; SetMute
-    if (hr != 0) {
+    if (hr < 0) {
         MsgBox("SetMute failed (0x" Format("{:08X}", hr & 0xFFFFFFFF) ")."
             . "`n`nYour audio device may have changed."
             . "`n`nUse Tray → Reinitialise Mic, or restart the script.", "MicMute", "Icon!")
@@ -174,7 +174,7 @@ SyncMuteState() {
     } catch {
         hr := -1
     }
-    if (hr != 0) {
+    if (hr < 0) {
         ; Device went away — release stale pointer and show notification
         ObjRelease(g_pAEV)
         g_pAEV := 0
@@ -283,8 +283,8 @@ LoadConfig() {
     if !FileExist(ini)
         return
     g_hotkey        := IniRead(ini, "General", "Hotkey", g_hotkey)
-    g_soundFeedback := (IniRead(ini, "General", "SoundFeedback", "1") = "1")
-    g_muteOnLock    := (IniRead(ini, "General", "MuteOnLock", "0") = "1")
+    g_soundFeedback := (Trim(IniRead(ini, "General", "SoundFeedback", "1")) = "1")
+    g_muteOnLock    := (Trim(IniRead(ini, "General", "MuteOnLock", "0")) = "1")
 }
 
 ; Save current settings to MicMute.ini.
@@ -352,7 +352,7 @@ InitMicEndpoint(silent := false) {
         "Ptr",  IID_MMEnum,
         "Ptr*", &pEnum := 0,
         "Int")
-    if (hr != 0 || !pEnum) {
+    if (hr < 0 || !pEnum) {
         if !silent
             MsgBox("CoCreateInstance failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nUse Tray → Reinitialise Mic after connecting a microphone.", "MicMute", "Icon!")
         return 0
@@ -360,15 +360,16 @@ InitMicEndpoint(silent := false) {
 
     hr := ComCall(4, pEnum, "UInt", 1, "UInt", 0, "Ptr*", &pDev := 0, "Int")
     ObjRelease(pEnum)
-    if (hr != 0 || !pDev) {
+    if (hr < 0 || !pDev) {
         if !silent
             MsgBox("GetDefaultAudioEndpoint failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nMake sure a microphone is connected, then use Tray → Reinitialise Mic.", "MicMute", "Icon!")
         return 0
     }
 
-    hr := ComCall(3, pDev, "Ptr", IID_AEV, "UInt", 23, "Ptr", 0, "Ptr*", &pAEV := 0, "Int")
+    ; CLSCTX_INPROC_SERVER = 1 (standard context for audio endpoint activation)
+    hr := ComCall(3, pDev, "Ptr", IID_AEV, "UInt", 1, "Ptr", 0, "Ptr*", &pAEV := 0, "Int")
     ObjRelease(pDev)
-    if (hr != 0 || !pAEV) {
+    if (hr < 0 || !pAEV) {
         if !silent
             MsgBox("Activate IAudioEndpointVolume failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nUse Tray → Reinitialise Mic to retry.", "MicMute", "Icon!")
         return 0
