@@ -46,6 +46,8 @@ global g_unmuteOnExit  := true         ; unmute mic when MicMute exits (F-10)
 global g_iconMuted     := ""           ; custom .ico path for muted state (F-17)
 global g_iconActive    := ""           ; custom .ico path for active state (F-17)
 global g_ledIndicator  := ""           ; LED to sync: "scrolllock", "capslock", "numlock", or "" (F-16)
+global g_muteSound     := ""           ; custom .wav for mute feedback (F-04)
+global g_unmuteSound   := ""           ; custom .wav for unmute feedback (F-04)
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
@@ -139,14 +141,12 @@ ToggleMute() {
     g_muted := newState
     SyncTray()
     FlashIcon()
-    ; Audible feedback — low tone for muted, high tone for active (P2-03)
-    if g_soundFeedback
-        SoundBeep(g_muted ? 400 : 800, 100)
+    PlayFeedback()
 }
 
 ; Set mute to a specific state (used by PTT/PTM on key release).
 SetMuteState(muted) {
-    global g_muted, g_pAEV, g_soundFeedback
+    global g_muted, g_pAEV
     if !g_pAEV
         return
     if (g_muted = muted)
@@ -157,8 +157,23 @@ SetMuteState(muted) {
     g_muted := muted
     SyncTray()
     FlashIcon()
-    if g_soundFeedback
+    PlayFeedback()
+}
+
+; Play audible feedback on toggle (F-04).
+; Uses custom WAV files if configured, otherwise SoundBeep fallback.
+PlayFeedback() {
+    global g_muted, g_soundFeedback, g_muteSound, g_unmuteSound
+    if !g_soundFeedback
+        return
+    soundFile := g_muted ? g_muteSound : g_unmuteSound
+    if (soundFile != "" && FileExist(soundFile)) {
+        try SoundPlay(soundFile)
+        catch
+            SoundBeep(g_muted ? 400 : 800, 100)   ; fallback on error
+    } else {
         SoundBeep(g_muted ? 400 : 800, 100)
+    }
 }
 
 SyncTray() {
@@ -598,6 +613,8 @@ LoadConfig() {
     g_iconMuted     := Trim(IniRead(ini, "General", "IconMuted", ""))
     g_iconActive    := Trim(IniRead(ini, "General", "IconActive", ""))
     g_ledIndicator  := StrLower(Trim(IniRead(ini, "General", "LEDIndicator", "")))
+    g_muteSound     := Trim(IniRead(ini, "General", "MuteSound", ""))
+    g_unmuteSound   := Trim(IniRead(ini, "General", "UnmuteSound", ""))
     ; Validate mode
     if (g_mode != "toggle" && g_mode != "push-to-talk" && g_mode != "push-to-mute")
         g_mode := "toggle"
@@ -616,6 +633,8 @@ SaveConfig() {
     IniWrite(g_iconMuted, ini, "General", "IconMuted")
     IniWrite(g_iconActive, ini, "General", "IconActive")
     IniWrite(g_ledIndicator, ini, "General", "LEDIndicator")
+    IniWrite(g_muteSound, ini, "General", "MuteSound")
+    IniWrite(g_unmuteSound, ini, "General", "UnmuteSound")
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
