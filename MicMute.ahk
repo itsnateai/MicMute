@@ -50,6 +50,7 @@ global g_muteSound     := ""           ; custom .wav for mute feedback (F-04)
 global g_unmuteSound   := ""           ; custom .wav for unmute feedback (F-04)
 global g_muteLock      := false        ; prevent external apps from changing mute state (F-11)
 global g_lockDebounce  := false        ; skip one sync cycle after enforcement (F-11)
+global g_hybridThreshold := 300        ; ms threshold: short press=toggle, long press=PTT (F-06)
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
@@ -350,6 +351,8 @@ RegisterHotkey() {
             Hotkey(g_hotkey, (*) => PushToTalk())
         } else if (g_mode = "push-to-mute") {
             Hotkey(g_hotkey, (*) => PushToMute())
+        } else if (g_mode = "hybrid") {
+            Hotkey(g_hotkey, (*) => HybridMode())
         } else {
             ; Default: toggle mode
             Hotkey(g_hotkey, (*) => ToggleMute())
@@ -380,6 +383,32 @@ PushToMute() {
     SetMuteState(false)   ; re-unmute on release (or timeout)
 }
 
+; Hybrid PTT/Toggle: short press (<threshold) = toggle, long press = PTT (F-06).
+; On key-down, starts a delayed timer. If key released before timer fires,
+; it's a toggle. If timer fires while held, unmute (PTT) until release.
+HybridMode() {
+    global g_hotkey, g_hybridThreshold
+    downTick := A_TickCount
+    ; Start delayed PTT activation — fires only if key is still held
+    SetTimer(HybridPTTActivate, -g_hybridThreshold)
+    keyName := ExtractKeyName(g_hotkey)
+    KeyWait(keyName, "T30")   ; block until key release (30s safety)
+    elapsed := A_TickCount - downTick
+    if (elapsed < g_hybridThreshold) {
+        ; Short press — cancel PTT timer, perform a toggle
+        SetTimer(HybridPTTActivate, 0)
+        ToggleMute()
+    } else {
+        ; Long press — PTT was activated by timer; re-mute on release
+        SetMuteState(true)
+    }
+}
+
+; Timer callback for hybrid mode — unmute when threshold elapses (key still held).
+HybridPTTActivate() {
+    SetMuteState(false)
+}
+
 ; Extract the key name from a hotkey string for KeyWait.
 ; Strips all AHK modifier/prefix symbols: # ^ ! + ~ * $ < >
 ; e.g. "#+a" → "a", "^!F13" → "F13", "~*#+a" → "a"
@@ -403,6 +432,8 @@ FormatModeName(mode) {
         return "Push-to-Talk"
     if (mode = "push-to-mute")
         return "Push-to-Mute"
+    if (mode = "hybrid")
+        return "Hybrid (PTT/Toggle)"
     return "Toggle"
 }
 
@@ -533,15 +564,18 @@ BuildTrayMenu() {
 
     ; ── Mode submenu (P2-01) ──
     modeMenu := Menu()
-    modeMenu.Add("Toggle",        (*) => SetMode("toggle"))
-    modeMenu.Add("Push-to-Talk",  (*) => SetMode("push-to-talk"))
-    modeMenu.Add("Push-to-Mute",  (*) => SetMode("push-to-mute"))
+    modeMenu.Add("Toggle",              (*) => SetMode("toggle"))
+    modeMenu.Add("Push-to-Talk",        (*) => SetMode("push-to-talk"))
+    modeMenu.Add("Push-to-Mute",        (*) => SetMode("push-to-mute"))
+    modeMenu.Add("Hybrid (PTT/Toggle)", (*) => SetMode("hybrid"))
     if (g_mode = "toggle")
         modeMenu.Check("Toggle")
     else if (g_mode = "push-to-talk")
         modeMenu.Check("Push-to-Talk")
     else if (g_mode = "push-to-mute")
         modeMenu.Check("Push-to-Mute")
+    else if (g_mode = "hybrid")
+        modeMenu.Check("Hybrid (PTT/Toggle)")
     A_TrayMenu.Add("Mode", modeMenu)
 
     ; ── Device submenu (P2-02) ──
@@ -647,8 +681,11 @@ LoadConfig() {
     g_muteLock      := (Trim(IniRead(ini, "General", "MuteLock", "0")) = "1")
     g_muteSound     := Trim(IniRead(ini, "General", "MuteSound", ""))
     g_unmuteSound   := Trim(IniRead(ini, "General", "UnmuteSound", ""))
+    g_hybridThreshold := Integer(Trim(IniRead(ini, "General", "HybridThreshold", "300")))
+    if (g_hybridThreshold < 50)
+        g_hybridThreshold := 50   ; floor to prevent accidental zero
     ; Validate mode
-    if (g_mode != "toggle" && g_mode != "push-to-talk" && g_mode != "push-to-mute")
+    if (g_mode != "toggle" && g_mode != "push-to-talk" && g_mode != "push-to-mute" && g_mode != "hybrid")
         g_mode := "toggle"
 }
 
@@ -665,6 +702,7 @@ SaveConfig() {
     IniWrite(g_iconMuted, ini, "General", "IconMuted")
     IniWrite(g_iconActive, ini, "General", "IconActive")
     IniWrite(g_ledIndicator, ini, "General", "LEDIndicator")
+    IniWrite(g_hybridThreshold, ini, "General", "HybridThreshold")
     IniWrite(g_muteLock ? "1" : "0", ini, "General", "MuteLock")
     IniWrite(g_muteSound, ini, "General", "MuteSound")
     IniWrite(g_unmuteSound, ini, "General", "UnmuteSound")
