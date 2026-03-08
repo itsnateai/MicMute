@@ -48,6 +48,8 @@ global g_iconActive    := ""           ; custom .ico path for active state (F-17
 global g_ledIndicator  := ""           ; LED to sync: "scrolllock", "capslock", "numlock", or "" (F-16)
 global g_muteSound     := ""           ; custom .wav for mute feedback (F-04)
 global g_unmuteSound   := ""           ; custom .wav for unmute feedback (F-04)
+global g_muteLock      := false        ; prevent external apps from changing mute state (F-11)
+global g_lockDebounce  := false        ; skip one sync cycle after enforcement (F-11)
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
@@ -297,8 +299,21 @@ SyncMuteState() {
     ; Sync tray if an external app changed the mute state
     externalMuted := (currentMute != 0)
     if (externalMuted != g_muted) {
-        g_muted := externalMuted
-        SyncTray()
+        if g_muteLock {
+            ; Mute lock ON — fight back: re-apply our state (F-11)
+            if g_lockDebounce {
+                g_lockDebounce := false
+                return   ; skip this cycle to avoid infinite toggle war
+            }
+            ComCall(14, g_pAEV, "Int", g_muted, "Ptr", 0, "Int")   ; SetMute
+            g_lockDebounce := true
+        } else {
+            ; Normal behavior — accept external change
+            g_muted := externalMuted
+            SyncTray()
+        }
+    } else {
+        g_lockDebounce := false   ; reset debounce when states agree
     }
 }
 
@@ -548,6 +563,9 @@ BuildTrayMenu() {
     A_TrayMenu.Add("Sound Feedback",     (*) => ToggleSoundFeedback())
     if g_soundFeedback
         A_TrayMenu.Check("Sound Feedback")
+    A_TrayMenu.Add("Mute Lock",          (*) => ToggleMuteLock())
+    if g_muteLock
+        A_TrayMenu.Check("Mute Lock")
     A_TrayMenu.Add()
     A_TrayMenu.Add("Run at Startup",     (*) => ToggleStartup())
     if FileExist(A_Startup "\MicMute.lnk")
@@ -571,6 +589,19 @@ ToggleSoundFeedback() {
     else
         A_TrayMenu.Uncheck("Sound Feedback")
     SaveConfig()
+}
+
+ToggleMuteLock() {
+    global g_muteLock, g_lockDebounce
+    g_muteLock := !g_muteLock
+    g_lockDebounce := false
+    if g_muteLock
+        A_TrayMenu.Check("Mute Lock")
+    else
+        A_TrayMenu.Uncheck("Mute Lock")
+    SaveConfig()
+    TrayTip("Mute Lock: " (g_muteLock ? "ON" : "OFF"), "MicMute", "Iconi")
+    SetTimer(() => TrayTip(), -3000)
 }
 
 ToggleStartup() {
@@ -613,6 +644,7 @@ LoadConfig() {
     g_iconMuted     := Trim(IniRead(ini, "General", "IconMuted", ""))
     g_iconActive    := Trim(IniRead(ini, "General", "IconActive", ""))
     g_ledIndicator  := StrLower(Trim(IniRead(ini, "General", "LEDIndicator", "")))
+    g_muteLock      := (Trim(IniRead(ini, "General", "MuteLock", "0")) = "1")
     g_muteSound     := Trim(IniRead(ini, "General", "MuteSound", ""))
     g_unmuteSound   := Trim(IniRead(ini, "General", "UnmuteSound", ""))
     ; Validate mode
@@ -633,6 +665,7 @@ SaveConfig() {
     IniWrite(g_iconMuted, ini, "General", "IconMuted")
     IniWrite(g_iconActive, ini, "General", "IconActive")
     IniWrite(g_ledIndicator, ini, "General", "LEDIndicator")
+    IniWrite(g_muteLock ? "1" : "0", ini, "General", "MuteLock")
     IniWrite(g_muteSound, ini, "General", "MuteSound")
     IniWrite(g_unmuteSound, ini, "General", "UnmuteSound")
 }
