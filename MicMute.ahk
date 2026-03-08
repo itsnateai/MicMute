@@ -42,6 +42,10 @@ global g_soundFeedback := true
 global g_muteOnLock    := false
 global g_mode          := "toggle"     ; "toggle", "push-to-talk", "push-to-mute"
 global g_deviceId      := ""           ; empty = system default
+global g_unmuteOnExit  := true         ; unmute mic when MicMute exits (F-10)
+global g_iconMuted     := ""           ; custom .ico path for muted state (F-17)
+global g_iconActive    := ""           ; custom .ico path for active state (F-17)
+global g_ledIndicator  := ""           ; LED to sync: "scrolllock", "capslock", "numlock", or "" (F-16)
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
@@ -70,8 +74,11 @@ if g_pAEV {
 ; ── TRAY ICONS ───────────────────────────────────────────────────────────────
 ; Place mic_on.ico and mic_off.ico in the same folder as this script.
 ; If either file is missing, a Windows built-in icon is used as a fallback.
-global g_icoGreen := FileExist(A_ScriptDir "\mic_on.ico")  ? A_ScriptDir "\mic_on.ico"  : ""
-global g_icoRed   := FileExist(A_ScriptDir "\mic_off.ico") ? A_ScriptDir "\mic_off.ico" : ""
+; Priority: custom INI path > mic_on/mic_off.ico > built-in fallback (F-17)
+global g_icoGreen := (g_iconActive != "" && FileExist(g_iconActive)) ? g_iconActive
+    : FileExist(A_ScriptDir "\mic_on.ico")  ? A_ScriptDir "\mic_on.ico"  : ""
+global g_icoRed   := (g_iconMuted != "" && FileExist(g_iconMuted)) ? g_iconMuted
+    : FileExist(A_ScriptDir "\mic_off.ico") ? A_ScriptDir "\mic_off.ico" : ""
 
 ; ── FLASH ANIMATION STATE ──────────────────────────────────────────────────
 global g_flashing   := false   ; true while flash animation is running
@@ -180,6 +187,20 @@ SetTrayIcon() {
             TraySetIcon("imageres.dll", 109)
         A_IconTip := "MicMute v" g_version " — Mic: Active"
     }
+    SyncLED()
+}
+
+; Sync a keyboard LED with the current mute state (F-16).
+; Muted = LED ON, Active = LED OFF. Only active if g_ledIndicator is set.
+SyncLED() {
+    global g_muted, g_ledIndicator
+    if (g_ledIndicator = "")
+        return
+    currentState := GetKeyState(g_ledIndicator, "T")   ; toggle state
+    if (g_muted && !currentState)
+        SendInput("{" g_ledIndicator "}")
+    else if (!g_muted && currentState)
+        SendInput("{" g_ledIndicator "}")
 }
 
 ; ── ICON FLASH (P4-03) ──────────────────────────────────────────────────────
@@ -573,6 +594,10 @@ LoadConfig() {
     g_muteOnLock    := (Trim(IniRead(ini, "General", "MuteOnLock", "0")) = "1")
     g_mode          := Trim(IniRead(ini, "General", "Mode", "toggle"))
     g_deviceId      := Trim(IniRead(ini, "General", "DeviceId", ""))
+    g_unmuteOnExit  := (Trim(IniRead(ini, "General", "UnmuteOnExit", "1")) = "1")
+    g_iconMuted     := Trim(IniRead(ini, "General", "IconMuted", ""))
+    g_iconActive    := Trim(IniRead(ini, "General", "IconActive", ""))
+    g_ledIndicator  := StrLower(Trim(IniRead(ini, "General", "LEDIndicator", "")))
     ; Validate mode
     if (g_mode != "toggle" && g_mode != "push-to-talk" && g_mode != "push-to-mute")
         g_mode := "toggle"
@@ -587,6 +612,10 @@ SaveConfig() {
     IniWrite(g_muteOnLock ? "1" : "0", ini, "General", "MuteOnLock")
     IniWrite(g_mode, ini, "General", "Mode")
     IniWrite(g_deviceId, ini, "General", "DeviceId")
+    IniWrite(g_unmuteOnExit ? "1" : "0", ini, "General", "UnmuteOnExit")
+    IniWrite(g_iconMuted, ini, "General", "IconMuted")
+    IniWrite(g_iconActive, ini, "General", "IconActive")
+    IniWrite(g_ledIndicator, ini, "General", "LEDIndicator")
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -688,7 +717,13 @@ InitMicEndpoint(silent := false) {
 
 ; Release COM handle and clean up on exit.
 Cleanup(*) {
-    global g_pAEV, g_muteOnLock
+    global g_pAEV, g_muteOnLock, g_unmuteOnExit, g_muted, g_ledIndicator
+    ; Restore LED state if we were controlling it (F-16)
+    if (g_ledIndicator != "" && GetKeyState(g_ledIndicator, "T"))
+        SendInput("{" g_ledIndicator "}")
+    ; Unmute mic on exit to prevent "dead mic" after quitting (F-10)
+    if g_unmuteOnExit && g_pAEV && g_muted
+        ComCall(14, g_pAEV, "Int", false, "Ptr", 0, "Int")   ; SetMute(false)
     if g_muteOnLock
         DllCall("Wtsapi32\WTSUnRegisterSessionNotification", "Ptr", A_ScriptHwnd)
     if g_pAEV
