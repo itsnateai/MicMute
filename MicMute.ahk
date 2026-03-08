@@ -1,12 +1,17 @@
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  MicMute.ahk  —  Global microphone mute toggle                         ║
-; ║  Version: 1.1.0                                                         ║
+; ║  Version: 1.2.0                                                         ║
 ; ║  Requires: AutoHotKey v2  (https://www.autohotkey.com/)                ║
 ; ║                                                                          ║
 ; ║  • Left-click  tray icon  → toggle mute                                 ║
 ; ║  • Right-click tray icon  → menu (toggle / reinitialise / sound / exit) ║
 ; ║  • Hotkey below           → toggle mute from anywhere                   ║
 ; ║  • Green icon = mic active  |  Red icon = mic muted                     ║
+; ║                                                                          ║
+; ║  Modes:                                                                  ║
+; ║    Toggle (default) — press hotkey to flip mute on/off                  ║
+; ║    Push-to-Talk     — hold hotkey to unmute, release to re-mute         ║
+; ║    Push-to-Mute     — hold hotkey to mute, release to re-unmute        ║
 ; ║                                                                          ║
 ; ║  Files (place in the same folder as this script):                       ║
 ; ║    mic_on.ico   — shown when mic is active  (falls back to AHK default) ║
@@ -23,7 +28,7 @@ Persistent
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
-global g_version := "1.1.0"
+global g_version := "1.2.0"
 
 ;  Defaults — overridden by MicMute.ini if present.
 ;  Change g_hotkey to whatever combo you prefer.
@@ -35,6 +40,8 @@ global g_version := "1.1.0"
 global g_hotkey        := "#+a"
 global g_soundFeedback := true
 global g_muteOnLock    := false
+global g_mode          := "toggle"     ; "toggle", "push-to-talk", "push-to-mute"
+global g_deviceId      := ""           ; empty = system default
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
@@ -66,18 +73,16 @@ if g_pAEV {
 global g_icoGreen := FileExist(A_ScriptDir "\mic_on.ico")  ? A_ScriptDir "\mic_on.ico"  : ""
 global g_icoRed   := FileExist(A_ScriptDir "\mic_off.ico") ? A_ScriptDir "\mic_off.ico" : ""
 
+; ── FLASH ANIMATION STATE ──────────────────────────────────────────────────
+global g_flashing   := false   ; true while flash animation is running
+global g_flashCount := 0       ; counts 0..5 (3 on/off cycles)
+
 ; ── TRAY MENU ────────────────────────────────────────────────────────────────
 BuildTrayMenu()
 
 ; ── HOTKEY ───────────────────────────────────────────────────────────────────
 ; Validate the hotkey string — fall back to tray-only mode on error (P0-03).
-try {
-    Hotkey(g_hotkey, (*) => ToggleMute())
-} catch as e {
-    MsgBox("Invalid hotkey: `"" g_hotkey "`"`n`n" e.Message
-        . "`n`nFalling back to tray-only mode."
-        . "`nEdit the hotkey in MicMute.ini or MicMute.ahk line 38.", "MicMute", "Icon!")
-}
+RegisterHotkey()
 
 ; ── INITIALISE ICON ──────────────────────────────────────────────────────────
 ; Brief delay so the shell has time to register the new tray icon
@@ -126,12 +131,39 @@ ToggleMute() {
     }
     g_muted := newState
     SyncTray()
+    FlashIcon()
     ; Audible feedback — low tone for muted, high tone for active (P2-03)
     if g_soundFeedback
         SoundBeep(g_muted ? 400 : 800, 100)
 }
 
+; Set mute to a specific state (used by PTT/PTM on key release).
+SetMuteState(muted) {
+    global g_muted, g_pAEV, g_soundFeedback
+    if !g_pAEV
+        return
+    if (g_muted = muted)
+        return
+    hr := ComCall(14, g_pAEV, "Int", muted, "Ptr", 0, "Int")   ; SetMute
+    if (hr < 0)
+        return
+    g_muted := muted
+    SyncTray()
+    FlashIcon()
+    if g_soundFeedback
+        SoundBeep(g_muted ? 400 : 800, 100)
+}
+
 SyncTray() {
+    global g_muted, g_icoGreen, g_icoRed, g_version, g_flashing
+    ; Don't interfere while flash animation is running
+    if g_flashing
+        return
+    SetTrayIcon()
+}
+
+; Actually apply the icon/tooltip based on current g_muted state.
+SetTrayIcon() {
     global g_muted, g_icoGreen, g_icoRed, g_version
     if g_muted {
         ; Red / muted — use custom icon or fall back to a built-in "blocked" icon
@@ -147,6 +179,48 @@ SyncTray() {
         else
             TraySetIcon("imageres.dll", 109)
         A_IconTip := "MicMute v" g_version " — Mic: Active"
+    }
+}
+
+; ── ICON FLASH (P4-03) ──────────────────────────────────────────────────────
+; Flash the tray icon 3 times on toggle to draw attention.
+; Uses a fast timer (100ms) with 6 ticks: tick 0=opposite, 1=current,
+; 2=opposite, 3=current, 4=opposite, 5=current (settled).
+
+FlashIcon() {
+    global g_flashing, g_flashCount
+    if g_flashing
+        SetTimer(FlashTick, 0)   ; stop existing flash before restarting
+    g_flashing   := true
+    g_flashCount := 0
+    SetTimer(FlashTick, 100)
+}
+
+FlashTick() {
+    global g_flashing, g_flashCount, g_muted, g_icoGreen, g_icoRed
+    ; Even ticks (0,2,4) show the OPPOSITE icon; odd ticks (1,3,5) show correct
+    showOpposite := (Mod(g_flashCount, 2) = 0)
+    if showOpposite {
+        ; Show the opposite of current state
+        if g_muted {
+            if (g_icoGreen != "")
+                TraySetIcon(g_icoGreen)
+            else
+                TraySetIcon("imageres.dll", 109)
+        } else {
+            if (g_icoRed != "")
+                TraySetIcon(g_icoRed)
+            else
+                TraySetIcon("shell32.dll", 131)
+        }
+    } else {
+        SetTrayIcon()   ; restore correct icon
+    }
+    g_flashCount++
+    if (g_flashCount >= 6) {
+        SetTimer(FlashTick, 0)   ; stop timer
+        g_flashing := false
+        SetTrayIcon()            ; ensure final state is correct
     }
 }
 
@@ -211,17 +285,229 @@ ReinitMic() {
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
+; ║  Hotkey registration & mode handling (P2-01)                             ║
+; ╚══════════════════════════════════════════════════════════════════════════╝
+
+; Register or re-register the hotkey based on current g_mode.
+RegisterHotkey() {
+    global g_hotkey, g_mode
+    ; Unregister any existing binding first (ignore errors if none exists)
+    try Hotkey(g_hotkey, "Off")
+    try Hotkey(g_hotkey " Up", "Off")
+    try {
+        if (g_mode = "push-to-talk") {
+            Hotkey(g_hotkey, (*) => PushToTalk())
+        } else if (g_mode = "push-to-mute") {
+            Hotkey(g_hotkey, (*) => PushToMute())
+        } else {
+            ; Default: toggle mode
+            Hotkey(g_hotkey, (*) => ToggleMute())
+        }
+    } catch as e {
+        MsgBox("Invalid hotkey: `"" g_hotkey "`"`n`n" e.Message
+            . "`n`nFalling back to tray-only mode."
+            . "`nEdit the hotkey in MicMute.ini or MicMute.ahk.", "MicMute", "Icon!")
+    }
+}
+
+; Push-to-talk: key down → unmute, key up → re-mute.
+; Uses KeyWait to block the hotkey thread until the key is released.
+PushToTalk() {
+    global g_hotkey
+    SetMuteState(false)   ; unmute while held
+    keyName := ExtractKeyName(g_hotkey)
+    KeyWait(keyName, "T30")   ; 30s safety timeout
+    SetMuteState(true)    ; re-mute on release (or timeout)
+}
+
+; Push-to-mute: key down → mute, key up → re-unmute.
+PushToMute() {
+    global g_hotkey
+    SetMuteState(true)    ; mute while held
+    keyName := ExtractKeyName(g_hotkey)
+    KeyWait(keyName, "T30")   ; 30s safety timeout
+    SetMuteState(false)   ; re-unmute on release (or timeout)
+}
+
+; Extract the key name from a hotkey string for KeyWait.
+; Strips all AHK modifier/prefix symbols: # ^ ! + ~ * $ < >
+; e.g. "#+a" → "a", "^!F13" → "F13", "~*#+a" → "a"
+ExtractKeyName(hk) {
+    return RegExReplace(hk, "^[#^!+~*$<>]+", "")
+}
+
+; Switch mode and re-register hotkey.
+SetMode(newMode) {
+    global g_mode
+    g_mode := newMode
+    RegisterHotkey()
+    BuildTrayMenu()   ; rebuild to update checkmarks
+    SaveConfig()
+    TrayTip("Mode: " FormatModeName(newMode), "MicMute", "Iconi")
+    SetTimer(() => TrayTip(), -3000)
+}
+
+FormatModeName(mode) {
+    if (mode = "push-to-talk")
+        return "Push-to-Talk"
+    if (mode = "push-to-mute")
+        return "Push-to-Mute"
+    return "Toggle"
+}
+
+; ╔══════════════════════════════════════════════════════════════════════════╗
+; ║  Audio device selector (P2-02)                                           ║
+; ╚══════════════════════════════════════════════════════════════════════════╝
+
+; Enumerate capture devices and return an array of {name, id} objects.
+EnumCaptureDevices() {
+    devices := []
+    CLSID_MMEnum := Buffer(16)
+    IID_MMEnum   := Buffer(16)
+    DllCall("ole32\CLSIDFromString", "WStr", "{BCDE0395-E52F-467C-8E3D-C4579291692E}", "Ptr", CLSID_MMEnum)
+    DllCall("ole32\CLSIDFromString", "WStr", "{A95664D2-9614-4F35-A746-DE8DB63617E6}", "Ptr", IID_MMEnum)
+
+    hr := DllCall("ole32\CoCreateInstance",
+        "Ptr",  CLSID_MMEnum,
+        "Ptr",  0,
+        "UInt", 1,
+        "Ptr",  IID_MMEnum,
+        "Ptr*", &pEnum := 0,
+        "Int")
+    if (hr < 0 || !pEnum)
+        return devices
+
+    ; EnumAudioEndpoints(eCapture=1, DEVICE_STATE_ACTIVE=1)
+    hr := ComCall(3, pEnum, "UInt", 1, "UInt", 1, "Ptr*", &pCollection := 0, "Int")
+    ObjRelease(pEnum)
+    if (hr < 0 || !pCollection)
+        return devices
+
+    ; GetCount
+    hr := ComCall(3, pCollection, "UInt*", &count := 0, "Int")
+    if (hr < 0) {
+        ObjRelease(pCollection)
+        return devices
+    }
+
+    ; PKEY_Device_FriendlyName: {A45C254E-DF1C-4EFD-8020-67D146A850E0}, pid 14
+    PKEY := Buffer(20, 0)
+    DllCall("ole32\CLSIDFromString", "WStr", "{A45C254E-DF1C-4EFD-8020-67D146A850E0}", "Ptr", PKEY)
+    NumPut("UInt", 14, PKEY, 16)
+
+    loop count {
+        idx := A_Index - 1
+        ; Item(idx)
+        hr := ComCall(4, pCollection, "UInt", idx, "Ptr*", &pDev := 0, "Int")
+        if (hr < 0 || !pDev)
+            continue
+
+        ; GetId — returns an LPWSTR that must be CoTaskMemFree'd
+        hr := ComCall(5, pDev, "Ptr*", &pIdStr := 0, "Int")
+        devId := ""
+        if (hr = 0 && pIdStr) {
+            devId := StrGet(pIdStr, "UTF-16")
+            DllCall("ole32\CoTaskMemFree", "Ptr", pIdStr)
+        }
+
+        ; OpenPropertyStore(STGM_READ=0)
+        friendlyName := ""
+        hr := ComCall(4, pDev, "UInt", 0, "Ptr*", &pStore := 0, "Int")
+        if (hr = 0 && pStore) {
+            ; GetValue(PKEY, &PROPVARIANT)
+            pv := Buffer(24, 0)
+            hr := ComCall(5, pStore, "Ptr", PKEY, "Ptr", pv, "Int")
+            if (hr = 0) {
+                vt := NumGet(pv, 0, "UShort")
+                if (vt = 31) {   ; VT_LPWSTR
+                    pStr := NumGet(pv, 8, "Ptr")
+                    if pStr
+                        friendlyName := StrGet(pStr, "UTF-16")
+                }
+                ; PropVariantClear
+                DllCall("ole32\PropVariantClear", "Ptr", pv)
+            }
+            ObjRelease(pStore)
+        }
+
+        ObjRelease(pDev)
+
+        if (devId != "" && friendlyName != "")
+            devices.Push({name: friendlyName, id: devId})
+    }
+
+    ObjRelease(pCollection)
+    return devices
+}
+
+; Switch to a specific device by ID. Empty string = system default.
+SelectDevice(deviceId, *) {
+    global g_pAEV, g_muted, g_deviceId
+    g_deviceId := deviceId
+    ; Release current endpoint
+    if g_pAEV {
+        ObjRelease(g_pAEV)
+        g_pAEV := 0
+    }
+    g_pAEV := InitMicEndpoint()
+    if g_pAEV {
+        hr := ComCall(15, g_pAEV, "Int*", &_m := 0, "Int")
+        g_muted := (hr = 0 && _m != 0)
+    } else {
+        g_muted := false
+    }
+    SyncTray()
+    BuildTrayMenu()
+    SaveConfig()
+    if (deviceId = "")
+        TrayTip("Using system default microphone.", "MicMute", "Iconi")
+    else
+        TrayTip("Switched microphone.", "MicMute", "Iconi")
+    SetTimer(() => TrayTip(), -3000)
+}
+
+; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  Tray menu                                                               ║
 ; ╚══════════════════════════════════════════════════════════════════════════╝
 
 BuildTrayMenu() {
-    global g_hotkey, g_version, g_soundFeedback
+    global g_hotkey, g_version, g_soundFeedback, g_mode, g_deviceId
     hotkeyLabel := "Hotkey: " HotkeyToReadable(g_hotkey)
 
     A_TrayMenu.Delete()
     A_TrayMenu.Add("Toggle Mute",       (*) => ToggleMute())
     A_TrayMenu.Add(hotkeyLabel,          (*) => 0)
     A_TrayMenu.Disable(hotkeyLabel)
+    A_TrayMenu.Add()
+
+    ; ── Mode submenu (P2-01) ──
+    modeMenu := Menu()
+    modeMenu.Add("Toggle",        (*) => SetMode("toggle"))
+    modeMenu.Add("Push-to-Talk",  (*) => SetMode("push-to-talk"))
+    modeMenu.Add("Push-to-Mute",  (*) => SetMode("push-to-mute"))
+    if (g_mode = "toggle")
+        modeMenu.Check("Toggle")
+    else if (g_mode = "push-to-talk")
+        modeMenu.Check("Push-to-Talk")
+    else if (g_mode = "push-to-mute")
+        modeMenu.Check("Push-to-Mute")
+    A_TrayMenu.Add("Mode", modeMenu)
+
+    ; ── Device submenu (P2-02) ──
+    devMenu := Menu()
+    devMenu.Add("System Default", SelectDevice.Bind(""))
+    if (g_deviceId = "")
+        devMenu.Check("System Default")
+    devMenu.Add()
+    devList := EnumCaptureDevices()
+    for dev in devList {
+        ; Use Bind to capture device ID by value in the closure
+        devMenu.Add(dev.name, SelectDevice.Bind(dev.id))
+        if (g_deviceId = dev.id)
+            devMenu.Check(dev.name)
+    }
+    A_TrayMenu.Add("Microphone", devMenu)
+
     A_TrayMenu.Add()
     A_TrayMenu.Add("Sound Feedback",     (*) => ToggleSoundFeedback())
     if g_soundFeedback
@@ -278,22 +564,29 @@ ToggleStartup() {
 
 ; Read settings from MicMute.ini if it exists. Falls back to defaults.
 LoadConfig() {
-    global g_hotkey, g_soundFeedback, g_muteOnLock
+    global g_hotkey, g_soundFeedback, g_muteOnLock, g_mode, g_deviceId
     ini := A_ScriptDir "\MicMute.ini"
     if !FileExist(ini)
         return
     g_hotkey        := IniRead(ini, "General", "Hotkey", g_hotkey)
     g_soundFeedback := (Trim(IniRead(ini, "General", "SoundFeedback", "1")) = "1")
     g_muteOnLock    := (Trim(IniRead(ini, "General", "MuteOnLock", "0")) = "1")
+    g_mode          := Trim(IniRead(ini, "General", "Mode", "toggle"))
+    g_deviceId      := Trim(IniRead(ini, "General", "DeviceId", ""))
+    ; Validate mode
+    if (g_mode != "toggle" && g_mode != "push-to-talk" && g_mode != "push-to-mute")
+        g_mode := "toggle"
 }
 
 ; Save current settings to MicMute.ini.
 SaveConfig() {
-    global g_hotkey, g_soundFeedback, g_muteOnLock
+    global g_hotkey, g_soundFeedback, g_muteOnLock, g_mode, g_deviceId
     ini := A_ScriptDir "\MicMute.ini"
     IniWrite(g_hotkey, ini, "General", "Hotkey")
     IniWrite(g_soundFeedback ? "1" : "0", ini, "General", "SoundFeedback")
     IniWrite(g_muteOnLock ? "1" : "0", ini, "General", "MuteOnLock")
+    IniWrite(g_mode, ini, "General", "Mode")
+    IniWrite(g_deviceId, ini, "General", "DeviceId")
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -333,11 +626,13 @@ OnSessionChange(wParam, lParam, msg, hwnd) {
     }
 }
 
-; Initialise IAudioEndpointVolume for the default capture (mic) device.
+; Initialise IAudioEndpointVolume for a capture (mic) device.
+; If g_deviceId is set, uses that specific device. Otherwise uses the system default.
 ; Returns the COM pointer on success, or 0 on failure (shows a message box
 ; but does NOT exit — the script stays alive so the user can reinitialise).
 ; If silent=true, suppresses MsgBox dialogs (used by periodic auto-detect).
 InitMicEndpoint(silent := false) {
+    global g_deviceId
     CLSID_MMEnum := Buffer(16)
     IID_MMEnum   := Buffer(16)
     IID_AEV      := Buffer(16)
@@ -358,7 +653,20 @@ InitMicEndpoint(silent := false) {
         return 0
     }
 
-    hr := ComCall(4, pEnum, "UInt", 1, "UInt", 0, "Ptr*", &pDev := 0, "Int")
+    pDev := 0
+    if (g_deviceId != "") {
+        ; Use specific device by ID: IMMDeviceEnumerator::GetDevice(pwstrId)
+        hr := ComCall(5, pEnum, "WStr", g_deviceId, "Ptr*", &pDev := 0, "Int")
+        if (hr < 0 || !pDev) {
+            ; Specific device not found — fall back to system default
+            if !silent
+                TrayTip("Saved device not found — using system default.", "MicMute", "Icon!")
+            hr := ComCall(4, pEnum, "UInt", 1, "UInt", 0, "Ptr*", &pDev := 0, "Int")
+        }
+    } else {
+        ; GetDefaultAudioEndpoint(eCapture=1, eConsole=0)
+        hr := ComCall(4, pEnum, "UInt", 1, "UInt", 0, "Ptr*", &pDev := 0, "Int")
+    }
     ObjRelease(pEnum)
     if (hr < 0 || !pDev) {
         if !silent
