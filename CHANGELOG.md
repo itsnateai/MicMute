@@ -2,6 +2,18 @@
 
 All notable changes to MicMute are documented here.
 
+## [1.6.0] - 2026-03-09
+
+### Changed
+- **ToolTip notifications** — all user-facing notifications now use floating ToolTip bubbles instead of Windows toast notifications (TrayTip). Non-intrusive and auto-dismiss.
+- **Embedded icons** — .ico files are embedded as PE resources in the compiled .exe via `@Ahk2Exe-AddResource`. No external icon files needed for standalone use.
+- **Icon fallback chain** — custom INI path → .ico on disk → embedded PE resource → Windows built-in icons. Works in all scenarios.
+- **Settings GUI** — title bar shows version, GitHub button opens repo page.
+- Version bumped to 1.6.0
+
+### Added
+- **Show Tray Icon** section in README — instructions for pinning MicMute to the Windows taskbar tray.
+
 ## [1.5.0] - 2026-03-09
 
 ### Added
