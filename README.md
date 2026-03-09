@@ -2,7 +2,25 @@
 
 Global microphone mute/unmute toggle for Windows with a system tray indicator.
 
-## What It Does
+**[Installation](#installation)** · **[Features](#features)** · **[Configuration](#configuration)** · **[Tray Menu](#tray-menu)** · **[How It Works](#how-it-works)**
+
+## Installation
+
+### Requirements
+
+- Windows 10/11
+- [AutoHotkey v2](https://www.autohotkey.com/) (or use the compiled .exe)
+
+### Quick Start
+
+1. Download the latest release (`MicMute.exe`) — no AutoHotkey installation needed
+2. Or clone/download this repo and run `MicMute.ahk` with [AutoHotkey v2](https://www.autohotkey.com/)
+
+### Run at Startup
+
+Right-click the tray icon → **Settings…** → check **Run at startup**.
+
+## Features
 
 Mutes and unmutes your default microphone at the OS level using a global hotkey. Works across all applications — great for quickly muting during calls, streams, or recordings.
 
@@ -25,20 +43,6 @@ Mutes and unmutes your default microphone at the OS level using a global hotkey.
 - **Unmute on exit**: auto-unmutes mic when MicMute closes (prevents "dead mic")
 - **Auto-detect**: automatically reconnects when you plug in or switch microphones
 - **External sync**: tray icon stays accurate even when other apps change your mic state
-
-## Requirements
-
-- Windows 10/11
-- [AutoHotkey v2](https://www.autohotkey.com/) (or use the compiled .exe)
-
-## Installation
-
-1. Download the latest release (`MicMute.exe`) — no AutoHotkey installation needed
-2. Or clone/download this repo and run `MicMute.ahk` with [AutoHotkey v2](https://www.autohotkey.com/)
-
-### Run at Startup
-
-Right-click the tray icon → **Settings…** → check **Run at startup**.
 
 ## Configuration
 

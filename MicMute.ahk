@@ -618,7 +618,7 @@ ShowSettingsGUI() {
         }
         g_settingsGui := 0
     }
-    dlg := Gui("+AlwaysOnTop", "MicMute — Settings")
+    dlg := Gui("+AlwaysOnTop", "MicMute v" g_version " — Settings")
     dlg.BackColor := "FFFFFF"
     dlg.SetFont("s9", "Segoe UI")
 
@@ -677,7 +677,8 @@ ShowSettingsGUI() {
     dlg.Add("Text", "x+6 yp+3 c555555 vLblUnmuteSound", FileLabel(g_unmuteSound))
 
     ; ── Buttons ──
-    dlg.Add("Button", "x170 y+18 w80 Default", "OK").OnEvent("Click", (*) => ApplySettingsGUI(dlg, true))
+    dlg.Add("Button", "x16 y+18 w80", "GitHub").OnEvent("Click", (*) => Run("https://github.com/itsnateai/MicMute"))
+    dlg.Add("Button", "x170 yp w80 Default", "OK").OnEvent("Click", (*) => ApplySettingsGUI(dlg, true))
     dlg.Add("Button", "x+8 w80", "Apply").OnEvent("Click", (*) => ApplySettingsGUI(dlg, false))
     dlg.Add("Button", "x+8 w80", "Cancel").OnEvent("Click", (*) => CloseSettingsGUI(dlg))
     dlg.OnEvent("Close", (*) => CloseSettingsGUI(dlg))
