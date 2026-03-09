@@ -156,15 +156,15 @@ OnMessage(0x404, OnTrayNotify)
 ToggleMute() {
     global g_muted, g_pAEV, g_soundFeedback
     if !g_pAEV {
-        MsgBox("No microphone endpoint is available.`n`nTry Tray → Reinitialise Mic.", "MicMute", "Icon!")
+        TrayTip("No microphone available.`nTry Tray → Reinitialise Mic.", "MicMute", "Icon!")
+        SetTimer(() => TrayTip(), -5000)
         return
     }
     newState := !g_muted
     hr := ComCall(14, g_pAEV, "Int", newState, "Ptr", 0, "Int")   ; SetMute
     if (hr < 0) {
-        MsgBox("SetMute failed (0x" Format("{:08X}", hr & 0xFFFFFFFF) ")."
-            . "`n`nYour audio device may have changed."
-            . "`n`nUse Tray → Reinitialise Mic, or restart the script.", "MicMute", "Icon!")
+        TrayTip("SetMute failed (0x" Format("{:08X}", hr & 0xFFFFFFFF) ").`nDevice may have changed — try Reinitialise Mic.", "MicMute", "Icon!")
+        SetTimer(() => TrayTip(), -5000)
         return
     }
     g_muted := newState
@@ -377,7 +377,7 @@ SyncMuteState() {
     global g_pAEV, g_muted
     if !g_pAEV {
         ; No mic currently — try to find one that may have been plugged in
-        g_pAEV := InitMicEndpoint(true)   ; silent mode — no MsgBox
+        g_pAEV := InitMicEndpoint(true)   ; silent mode — no TrayTip
         if !g_pAEV
             return
         ; New device found — read its mute state
@@ -469,9 +469,8 @@ RegisterHotkey() {
         prevHotkey := g_hotkey
     } catch as e {
         prevHotkey := ""
-        MsgBox("Invalid hotkey: `"" g_hotkey "`"`n`n" e.Message
-            . "`n`nFalling back to tray-only mode."
-            . "`nEdit the hotkey in MicMute.ini or MicMute.ahk.", "MicMute", "Icon!")
+        TrayTip("Invalid hotkey: " g_hotkey "`nFalling back to tray-only mode.", "MicMute", "Icon!")
+        SetTimer(() => TrayTip(), -5000)
     }
 }
 
@@ -601,7 +600,8 @@ ApplyNewHotkey(dlg, hkCtrl, txtCtrl) {
     rawHK := Trim(txtCtrl.Value)
     newHK := (rawHK != "") ? rawHK : hkCtrl.Value
     if (newHK = "") {
-        MsgBox("No hotkey entered. Keeping current hotkey.", "MicMute", "Icon!")
+        TrayTip("No hotkey entered. Keeping current hotkey.", "MicMute", "Icon!")
+        SetTimer(() => TrayTip(), -5000)
         return
     }
     g_hotkey := newHK
@@ -1127,9 +1127,9 @@ HotkeyToReadable(hk) {
 
 ; Initialise IAudioEndpointVolume for a capture (mic) device.
 ; If g_deviceId is set, uses that specific device. Otherwise uses the system default.
-; Returns the COM pointer on success, or 0 on failure (shows a message box
+; Returns the COM pointer on success, or 0 on failure (shows a TrayTip
 ; but does NOT exit — the script stays alive so the user can reinitialise).
-; If silent=true, suppresses MsgBox dialogs (used by periodic auto-detect).
+; If silent=true, suppresses TrayTip notifications (used by periodic auto-detect).
 InitMicEndpoint(silent := false) {
     global g_deviceId
     CLSID_MMEnum := Buffer(16)
@@ -1147,8 +1147,10 @@ InitMicEndpoint(silent := false) {
         "Ptr*", &pEnum := 0,
         "Int")
     if (hr < 0 || !pEnum) {
-        if !silent
-            MsgBox("CoCreateInstance failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nUse Tray → Reinitialise Mic after connecting a microphone.", "MicMute", "Icon!")
+        if !silent {
+            TrayTip("Audio init failed (0x" Format("{:08X}", hr & 0xFFFFFFFF) ").`nUse Tray → Reinitialise Mic.", "MicMute", "Icon!")
+            SetTimer(() => TrayTip(), -5000)
+        }
         return 0
     }
 
@@ -1168,8 +1170,10 @@ InitMicEndpoint(silent := false) {
     }
     ObjRelease(pEnum)
     if (hr < 0 || !pDev) {
-        if !silent
-            MsgBox("GetDefaultAudioEndpoint failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nMake sure a microphone is connected, then use Tray → Reinitialise Mic.", "MicMute", "Icon!")
+        if !silent {
+            TrayTip("No microphone found.`nConnect one and use Tray → Reinitialise Mic.", "MicMute", "Icon!")
+            SetTimer(() => TrayTip(), -5000)
+        }
         return 0
     }
 
@@ -1177,8 +1181,10 @@ InitMicEndpoint(silent := false) {
     hr := ComCall(3, pDev, "Ptr", IID_AEV, "UInt", 1, "Ptr", 0, "Ptr*", &pAEV := 0, "Int")
     ObjRelease(pDev)
     if (hr < 0 || !pAEV) {
-        if !silent
-            MsgBox("Activate IAudioEndpointVolume failed: 0x" Format("{:08X}", hr & 0xFFFFFFFF) "`n`nUse Tray → Reinitialise Mic to retry.", "MicMute", "Icon!")
+        if !silent {
+            TrayTip("Mic activation failed (0x" Format("{:08X}", hr & 0xFFFFFFFF) ").`nUse Tray → Reinitialise Mic.", "MicMute", "Icon!")
+            SetTimer(() => TrayTip(), -5000)
+        }
         return 0
     }
 
