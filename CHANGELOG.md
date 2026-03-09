@@ -2,6 +2,33 @@
 
 All notable changes to MicMute are documented here.
 
+## [1.5.0] - 2026-03-09
+
+### Added
+- **Settings GUI** — full settings window (`Settings…` in tray menu) for all options: behavior, OSD, hotkeys, custom files. Replaces manual INI editing. Includes OK / Apply / Cancel buttons with ToolTip feedback on Apply.
+- **Startup mute options** — 4-option dropdown: "Don't change", "Always muted", "Always unmuted", "Remember last". Persists mute state across restarts when set to "Remember last".
+- **Mic volume scroll** — scroll wheel over tray icon adjusts microphone input volume in 5% steps, event-driven via tray hover detection.
+- **Middle-click mode toggle** — middle-click tray icon to switch between Toggle and Push-to-Talk modes with a single distinct tone per mode (1175Hz for Toggle, 1568Hz for PTT).
+- **Deafen hotkey capture** — Settings GUI uses a proper Hotkey capture control (press Alt+L and it shows the combo) plus a "WinKey…" popup button for manual Win key combo entry.
+- **Browse/Clear buttons** — custom icon and sound file paths use Browse/Clear buttons with filename labels instead of raw Edit boxes.
+
+### Fixed
+- **LoadConfig/SaveConfig `global` declarations** — functions had incomplete global lists causing settings (especially StartMuted) to silently fail to save/load. Fixed with bare `global` statement.
+- **Middle-click crash** — tray icon middle-click caused 0xc0000005 access violation after ~5 clicks. Fixed ClearTrayHover timer and added try-catch around ComCall in AdjustMicVolume.
+- **Middle-click not working until right-click** — tray hover timer was too short (300ms). Increased to 1500ms.
+- **PTT→Toggle mode switch** — hotkey still acted as PTT after switching modes via right-click menu until script was restarted. Fixed by properly re-registering hotkey on mode change.
+- **Device name truncation** — long microphone names in the Mic Source tray submenu expanded the context menu excessively. Names now truncated at 40 characters.
+
+### Removed
+- **LED sync (F-16)** — keyboard LED indicator feature removed entirely. Was unreliable and interfered with actual key function (CapsLock, ScrollLock, NumLock).
+- **Hybrid mode (F-06)** — removed in favor of middle-click mode switching between Toggle and PTT.
+
+### Changed
+- Version bumped to 1.5.0
+- Tray menu reorganized: Mode/Mic Source submenus, Settings item, separators
+- Settings GUI layout tightened — less wasted space for file selectors
+- Only Toggle and Push-to-Talk modes available (removed Hybrid and Push-to-Mute)
+
 ## [1.3.0] - 2026-03-08
 
 ### Added
@@ -63,7 +90,6 @@ All notable changes to MicMute are documented here.
 - Error dialogs now suggest Tray → Reinitialise Mic instead of crashing
 - Tray tooltip shows version number and current mute state
 - Tray menu expanded with Sound Feedback, Run at Startup, and version display
-- README expanded with configuration guide, how-it-works, compilation, and OS-level mute note
 
 ## [1.0.0] - 2026-03-06
 

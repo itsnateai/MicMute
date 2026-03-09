@@ -9,16 +9,19 @@ Mutes and unmutes your default microphone at the OS level using a global hotkey.
 - **Hotkey**: `Win + Shift + A` (configurable, rebindable at runtime)
 - **Tray icon**: Green = mic active, Red = mic muted
 - **Left-click** tray icon to toggle
+- **Middle-click** tray icon to switch between Toggle and PTT modes
 - **Right-click** tray icon for full menu
+- **Scroll wheel** over tray icon to adjust mic volume (5% steps)
 - **Sound feedback**: audible beep or custom WAV on toggle
 - **Icon flash**: tray icon flashes briefly on toggle for visibility
 - **On-screen display**: optional floating overlay shows MUTED/ACTIVE on toggle
-- **Modes**: Toggle, Push-to-Talk, Push-to-Mute, Hybrid (PTT/Toggle)
+- **Modes**: Toggle and Push-to-Talk
 - **Mute lock**: prevent external apps from changing your mute state
 - **Deafen mode**: separate hotkey to mute mic + speakers simultaneously
+- **Settings GUI**: full settings window — no need to edit INI files manually
 - **Device selector**: pick which microphone to control from the tray menu
-- **LED sync**: sync keyboard LED (ScrollLock/CapsLock/NumLock) with mute state
 - **Custom icons**: configurable .ico paths for colorblind accessibility
+- **Custom sounds**: replace default beep with your own .wav files
 - **Unmute on exit**: auto-unmutes mic when MicMute closes (prevents "dead mic")
 - **Auto-detect**: automatically reconnects when you plug in or switch microphones
 - **External sync**: tray icon stays accurate even when other apps change your mic state
@@ -26,62 +29,55 @@ Mutes and unmutes your default microphone at the OS level using a global hotkey.
 ## Requirements
 
 - Windows 10/11
-- [AutoHotkey v2](https://www.autohotkey.com/)
+- [AutoHotkey v2](https://www.autohotkey.com/) (or use the compiled .exe)
 
 ## Installation
 
-1. Install [AutoHotkey v2](https://www.autohotkey.com/)
-2. Clone or download this repo
-3. Double-click `MicMute.ahk` to run
+1. Download the latest release (`MicMute.exe`) — no AutoHotkey installation needed
+2. Or clone/download this repo and run `MicMute.ahk` with [AutoHotkey v2](https://www.autohotkey.com/)
 
 ### Run at Startup
 
-Right-click the tray icon → **Run at Startup** to create/remove a Windows startup shortcut.
+Right-click the tray icon → **Settings…** → check **Run at startup**.
 
 ## Configuration
 
-Settings are stored in `MicMute.ini` (auto-created when you change settings via the tray menu). You can also edit it manually:
+All settings are accessible through the **Settings GUI** (right-click tray → Settings…). Settings are stored in `MicMute.ini` (auto-created).
 
 ```ini
 [General]
 Hotkey=#+a
 SoundFeedback=1
-MuteOnLock=0
 Mode=toggle
 DeviceId=
-UnmuteOnExit=1
 MuteLock=0
 MuteSound=
 UnmuteSound=
-HybridThreshold=300
 IconMuted=
 IconActive=
 OSD_Enabled=0
-OSD_Position=bottom
 OSD_Duration=1500
-LEDIndicator=
 DeafenHotkey=
+MiddleClickToggle=1
+StartMuted=no
 ```
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `Hotkey` | `#+a` (Win+Shift+A) | Global mute toggle hotkey |
 | `SoundFeedback` | `1` | Audible beep on toggle (0 to disable) |
-| `MuteOnLock` | `0` | Auto-mute mic when PC locks (Win+L) |
-| `Mode` | `toggle` | Hotkey mode: `toggle`, `push-to-talk`, `push-to-mute`, or `hybrid` |
+| `Mode` | `toggle` | Hotkey mode: `toggle` or `push-to-talk` |
 | `DeviceId` | _(empty)_ | Specific mic device ID (empty = system default) |
-| `UnmuteOnExit` | `1` | Auto-unmute mic when MicMute exits |
 | `MuteLock` | `0` | Prevent external apps from changing mute state |
 | `MuteSound` | _(empty)_ | Custom .wav file path for mute sound (empty = beep) |
 | `UnmuteSound` | _(empty)_ | Custom .wav file path for unmute sound (empty = beep) |
-| `HybridThreshold` | `300` | Hybrid mode: ms threshold between toggle and PTT (min 50) |
 | `IconMuted` | _(empty)_ | Custom .ico path for muted icon (empty = mic_off.ico) |
 | `IconActive` | _(empty)_ | Custom .ico path for active icon (empty = mic_on.ico) |
 | `OSD_Enabled` | `0` | Show floating overlay on toggle |
-| `OSD_Position` | `bottom` | OSD position: `top`, `bottom`, or `center` |
 | `OSD_Duration` | `1500` | OSD display time in milliseconds (min 500) |
-| `LEDIndicator` | _(empty)_ | Keyboard LED to sync: `scrolllock`, `capslock`, or `numlock` |
 | `DeafenHotkey` | _(empty)_ | Hotkey for deafen mode (empty = disabled) |
+| `MiddleClickToggle` | `1` | Middle-click tray to switch Toggle/PTT modes |
+| `StartMuted` | `no` | Startup behavior: `no`, `yes`, `unmuted`, or `last` |
 
 ### Hotkey Syntax
 
@@ -94,40 +90,35 @@ Examples:
 
 If the hotkey string is invalid, MicMute falls back to tray-only mode (left-click the icon to toggle).
 
-You can also change the hotkey at runtime via Tray → **Change Hotkey...**.
+You can also change the hotkey at runtime via Tray → **Hotkey: ...**.
 
 ## Tray Menu
 
 | Item | Action |
 |------|--------|
 | Toggle Mute | Mute/unmute the mic |
-| Hotkey: ... | Shows current hotkey (informational) |
-| Mode → | Submenu: Toggle, Push-to-Talk, Push-to-Mute, Hybrid |
-| Microphone → | Submenu: System Default + detected devices |
-| Change Hotkey... | Open dialog to rebind hotkey at runtime |
-| Sound Feedback | Toggle audible beep/sound on mute/unmute |
-| Mute Lock | Prevent external apps from changing mute state |
-| On-Screen Display | Toggle floating overlay on mute/unmute |
-| Run at Startup | Toggle Windows startup shortcut |
-| Reinitialise Mic | Manually reconnect to audio device |
-| Sound Settings... | Open Windows Sound Settings |
-| v1.3.0 | Version (informational) |
+| Hotkey: ... | Shows current hotkey — click to rebind |
+| Mode → | Submenu: Toggle, Push-to-Talk |
+| Mic Source → | Submenu: available audio devices |
+| Settings… | Open Settings GUI |
+| Reinit Mic | Manually reconnect to audio device |
+| Sound Settings | Open Windows Sound Settings |
 | Exit | Close MicMute |
 
 ### Modes
 
 - **Toggle** (default): Press the hotkey to flip mute on/off.
 - **Push-to-Talk**: Hold the hotkey to unmute. Release to re-mute. (30s safety timeout)
-- **Push-to-Mute**: Hold the hotkey to mute. Release to re-unmute. (30s safety timeout)
-- **Hybrid (PTT/Toggle)**: Short press (<300ms) toggles mute. Long press activates push-to-talk. Eliminates mode switching.
+
+Switch modes via the tray menu or middle-click the tray icon.
 
 ### Deafen Mode
 
-Set `DeafenHotkey` in MicMute.ini to enable a separate hotkey that mutes both your microphone and speakers simultaneously. Press again to restore both to their previous state. The tray tooltip shows `[DEAFENED]` when active.
+Set a deafen hotkey in Settings to enable a separate hotkey that mutes both your microphone and speakers simultaneously. Press again to restore both to their previous state. The tray tooltip shows `[DEAFENED]` when active.
 
 ### Mute Lock
 
-When enabled, MicMute prevents other applications from changing your mic mute state. If an app tries to unmute/mute your mic, MicMute immediately re-applies your chosen state. Toggle via tray menu or set `MuteLock=1` in the INI.
+When enabled, MicMute prevents other applications from changing your mic mute state. If an app tries to unmute/mute your mic, MicMute immediately re-applies your chosen state.
 
 ### On-Screen Display
 
@@ -135,15 +126,19 @@ When enabled, a floating overlay briefly appears on screen showing **MUTED** (re
 
 ### Custom Sounds
 
-Replace the default beep with your own `.wav` files. Set `MuteSound` and/or `UnmuteSound` to WAV file paths in MicMute.ini. Falls back to beep if the file is missing or invalid.
+Replace the default beep with your own `.wav` files. Set paths via Settings → Custom Files section. Falls back to beep if the file is missing or invalid.
 
 ### Accessible Icons
 
-Set `IconMuted` and `IconActive` to custom `.ico` file paths for colorblind-friendly alternatives. The default red/green icons can be difficult for the ~8% of males with red/green color deficiency.
+Set custom `.ico` file paths for colorblind-friendly alternatives via Settings → Custom Files. The default red/green icons can be difficult for the ~8% of males with red/green color deficiency.
 
-### LED Sync
+### Startup Behavior
 
-Set `LEDIndicator` to `scrolllock`, `capslock`, or `numlock` to sync a keyboard LED with the mute state. LED ON = mic muted. The original LED state is restored when MicMute exits.
+Control what happens to your mic when MicMute starts:
+- **Don't change** — leaves mic in its current state (default)
+- **Always muted** — forces mic to mute on startup
+- **Always unmuted** — forces mic to unmute on startup
+- **Remember last** — restores the previous session's mute state
 
 ## How It Works
 

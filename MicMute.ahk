@@ -1,6 +1,6 @@
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  MicMute.ahk  —  Global microphone mute toggle                         ║
-; ║  Version: 1.3.0                                                         ║
+; ║  Version: 1.5.0                                                         ║
 ; ║  Requires: AutoHotKey v2  (https://www.autohotkey.com/)                ║
 ; ║                                                                          ║
 ; ║  • Left-click  tray icon  → toggle mute                                 ║
@@ -11,11 +11,9 @@
 ; ║  Modes:                                                                  ║
 ; ║    Toggle (default)    — press hotkey to flip mute on/off               ║
 ; ║    Push-to-Talk        — hold hotkey to unmute, release to re-mute      ║
-; ║    Push-to-Mute        — hold hotkey to mute, release to re-unmute     ║
-; ║    Hybrid (PTT/Toggle) — short press = toggle, long press = PTT        ║
 ; ║                                                                          ║
 ; ║  Features:                                                               ║
-; ║    Custom sounds, OSD overlay, mute lock, LED sync, deafen mode,       ║
+; ║    Custom sounds, OSD overlay, mute lock, deafen mode,                 ║
 ; ║    live hotkey rebinding, custom icon colors, unmute on exit            ║
 ; ║                                                                          ║
 ; ║  Files (place in the same folder as this script):                       ║
@@ -33,7 +31,7 @@ Persistent
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
-global g_version := "1.3.0"
+global g_version := "1.5.0"
 
 ;  Defaults — overridden by MicMute.ini if present.
 ;  Change g_hotkey to whatever combo you prefer.
@@ -42,36 +40,32 @@ global g_version := "1.3.0"
 ;    "^!m"   →  Ctrl + Alt + M
 ;    "#+a"   →  Win  + Shift + A
 ;    "F13"   →  F13 key (if your keyboard has it)
-global g_hotkey        := "#+a"
+global g_hotkey        := ">!,"
 global g_soundFeedback := true
-global g_muteOnLock    := false
-global g_mode          := "toggle"     ; "toggle", "push-to-talk", "push-to-mute"
+global g_mode          := "toggle"     ; "toggle", "push-to-talk"
 global g_deviceId      := ""           ; empty = system default
-global g_unmuteOnExit  := true         ; unmute mic when MicMute exits (F-10)
 global g_iconMuted     := ""           ; custom .ico path for muted state (F-17)
 global g_iconActive    := ""           ; custom .ico path for active state (F-17)
-global g_ledIndicator  := ""           ; LED to sync: "scrolllock", "capslock", "numlock", or "" (F-16)
+global g_ledIndicator  := ""           ; DEPRECATED: LED sync removed (was F-16, interfered with actual key function)
 global g_muteSound     := ""           ; custom .wav for mute feedback (F-04)
 global g_unmuteSound   := ""           ; custom .wav for unmute feedback (F-04)
 global g_muteLock      := false        ; prevent external apps from changing mute state (F-11)
 global g_lockDebounce  := false        ; skip one sync cycle after enforcement (F-11)
-global g_hybridThreshold := 300        ; ms threshold: short press=toggle, long press=PTT (F-06)
-global g_hybridPTTActive := false      ; set by timer when PTT activates in hybrid mode (F-06)
 global g_osdEnabled    := false        ; show floating overlay on toggle (F-02)
-global g_osdPosition   := "bottom"     ; OSD position: "top", "bottom", "center" (F-02)
-global g_osdDuration   := 1500         ; OSD display time in ms (F-02)
+global g_osdDuration   := 800          ; OSD display time in ms (F-02)
 global g_osdGui        := 0            ; GUI object reference for current OSD (F-02)
 global g_deafenHotkey  := ""           ; separate hotkey for deafen mode (F-20)
 global g_deafened      := false        ; true when deafened (mic + speakers muted) (F-20)
-global g_ledInitialState := false      ; LED state at startup, for cleanup restore (F-16)
+global g_ledInitialState := false      ; DEPRECATED: kept for INI compat
 global g_speakerWasMuted := false      ; remember speaker state before deafen (F-20)
+global g_startMuted     := "no"        ; startup mute: "no", "yes", "unmuted", "last" (F-14)
+global g_overTrayIcon   := false       ; true when mouse hovers our tray icon (F-18)
+global g_middleClickToggle := true     ; middle-click tray icon to toggle between Toggle/PTT modes
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
 
-; Save LED state at startup before MicMute starts toggling it (F-16)
-if (g_ledIndicator != "")
-    g_ledInitialState := GetKeyState(g_ledIndicator, "T")
+; LED sync removed (F-16) — was unreliable and interfered with actual key function
 
 ; ── AUDIO SETUP ──────────────────────────────────────────────────────────────
 ; Uses Windows Core Audio (IAudioEndpointVolume) via proper CoCreateInstance.
@@ -92,6 +86,21 @@ global g_muted := false
 if g_pAEV {
     hr := ComCall(15, g_pAEV, "Int*", &_initMuted := 0, "Int")   ; GetMute
     g_muted := (hr = 0 && _initMuted != 0)
+    ; Apply startup mute preference (F-14)
+    if (g_startMuted = "yes" && !g_muted) {
+        ComCall(14, g_pAEV, "Int", true, "Ptr", 0, "Int")
+        g_muted := true
+    } else if (g_startMuted = "unmuted" && g_muted) {
+        ComCall(14, g_pAEV, "Int", false, "Ptr", 0, "Int")
+        g_muted := false
+    } else if (g_startMuted = "last") {
+        ini := A_ScriptDir "\MicMute.ini"
+        lastState := (Trim(IniRead(ini, "General", "LastMuteState", "0")) = "1")
+        if (lastState != g_muted) {
+            ComCall(14, g_pAEV, "Int", lastState, "Ptr", 0, "Int")
+            g_muted := lastState
+        }
+    }
 }
 
 ; ── TRAY ICONS ───────────────────────────────────────────────────────────────
@@ -104,8 +113,9 @@ global g_icoRed   := (g_iconMuted != "" && FileExist(g_iconMuted)) ? g_iconMuted
     : FileExist(A_ScriptDir "\mic_off.ico") ? A_ScriptDir "\mic_off.ico" : ""
 
 ; ── FLASH ANIMATION STATE ──────────────────────────────────────────────────
+global g_flashEnabled := false  ; set to true to enable icon flash on toggle
 global g_flashing   := false   ; true while flash animation is running
-global g_flashCount := 0       ; counts 0..5 (3 on/off cycles)
+global g_flashCount := 0       ; counts 0..1 (1 on/off cycle)
 
 ; ── TRAY MENU ────────────────────────────────────────────────────────────────
 BuildTrayMenu()
@@ -116,11 +126,9 @@ RegisterHotkey()
 RegisterDeafenHotkey()
 
 ; ── INITIALISE ICON ──────────────────────────────────────────────────────────
-; Brief delay so the shell has time to register the new tray icon
-; before we attempt to change it — without this, SyncTray() can
-; silently fail to update the icon on first run.
-Sleep(150)
-SyncTray()
+; Defer icon update so the shell has time to register the tray icon.
+; Using SetTimer instead of Sleep to avoid blocking startup.
+SetTimer(SyncTray, -150)
 
 ; Show a brief tooltip if no mic was found so the user knows what's up
 if !g_pAEV {
@@ -134,13 +142,9 @@ if !g_pAEV {
 ; Handles both device hotplug (P1-01) and external mute changes (P1-02).
 SetTimer(SyncMuteState, 3000)
 
-; ── MUTE ON LOCK ─────────────────────────────────────────────────────────────
-; Auto-mute when the workstation locks (Win+L). Requires g_muteOnLock = true.
-; Set MuteOnLock=1 in MicMute.ini to enable.
-if g_muteOnLock {
-    DllCall("Wtsapi32\WTSRegisterSessionNotification", "Ptr", A_ScriptHwnd, "UInt", 0)
-    OnMessage(0x02B1, OnSessionChange)   ; WM_WTSSESSION_CHANGE
-}
+; ── TRAY SCROLL DETECTION (F-18) ─────────────────────────────────────────
+; Track when the mouse hovers over our tray icon for scroll-to-volume.
+OnMessage(0x404, OnTrayNotify)
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  Core functions                                                          ║
@@ -161,14 +165,17 @@ ToggleMute() {
         return
     }
     g_muted := newState
+    SaveLastMuteState()
     SyncTray()
-    FlashIcon()
+    if g_flashEnabled
+        FlashIcon()
     ShowOSD()
     PlayFeedback()
 }
 
-; Set mute to a specific state (used by PTT/PTM on key release).
-SetMuteState(muted) {
+; Set mute to a specific state (used by PTT and deafen).
+; quiet=true skips flash/OSD/sound for instant transitions (e.g. PTT hold/release).
+SetMuteState(muted, quiet := false) {
     global g_muted, g_pAEV
     if !g_pAEV
         return
@@ -178,14 +185,28 @@ SetMuteState(muted) {
     if (hr < 0)
         return
     g_muted := muted
+    SaveLastMuteState()
     SyncTray()
-    FlashIcon()
-    ShowOSD()
-    PlayFeedback()
+    if !quiet {
+        if g_flashEnabled
+            FlashIcon()
+        ShowOSD()
+        PlayFeedback()
+    }
+}
+
+; Persist current mute state to INI for "last" mode (F-14).
+; Only writes when StartMuted=last to avoid unnecessary disk I/O in PTT mode.
+SaveLastMuteState() {
+    global g_startMuted, g_muted
+    if (g_startMuted != "last")
+        return
+    ini := A_ScriptDir "\MicMute.ini"
+    IniWrite(g_muted ? "1" : "0", ini, "General", "LastMuteState")
 }
 
 ; Play audible feedback on toggle (F-04).
-; Uses custom WAV files if configured, otherwise SoundBeep fallback.
+; Uses custom WAV files if configured, otherwise Android-style two-tone beep.
 PlayFeedback() {
     global g_muted, g_soundFeedback, g_muteSound, g_unmuteSound
     if !g_soundFeedback
@@ -195,54 +216,65 @@ PlayFeedback() {
         try
             SoundPlay(soundFile, true)   ; synchronous — throws on bad file
         catch
-            SoundBeep(g_muted ? 400 : 800, 100)   ; fallback on error
+            PlayToneSequence(g_muted)
     } else {
-        SoundBeep(g_muted ? 400 : 800, 100)
+        PlayToneSequence(g_muted)
     }
+}
+
+; Single-tone feedback: low for mute, high for unmute.
+PlayToneSequence(muted) {
+    SoundBeep(muted ? 587 : 880, 80)
 }
 
 ; Show an on-screen display overlay indicating mute state (F-02).
 ; Borderless, always-on-top, click-through GUI that auto-dismisses.
 ShowOSD() {
-    global g_muted, g_osdEnabled, g_osdPosition, g_osdDuration, g_osdGui
+    global g_muted, g_osdEnabled, g_osdDuration, g_osdGui
     if !g_osdEnabled
         return
+    ; Cancel any pending dismiss timer before touching the GUI
+    SetTimer(DismissOSD, 0)
     ; Destroy previous OSD if still showing
     if g_osdGui {
         try g_osdGui.Destroy()
         g_osdGui := 0
     }
-    ; Create borderless, always-on-top, click-through GUI
+    ; Modern dark toast bubble — click-through, always on top
     osd := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20")
-    osd.BackColor := g_muted ? "CC0000" : "00AA00"
-    osd.MarginX := 20
-    osd.MarginY := 10
-    label := g_muted ? "MUTED" : "ACTIVE"
-    osd.SetFont("s24 cFFFFFF bold", "Segoe UI")
-    osd.Add("Text", "Center", label)
-    ; Show first to get dimensions, then reposition
+    osd.BackColor := "1E1E1E"
+    osd.MarginX := 0
+    osd.MarginY := 0
+    accentColor := g_muted ? "E04040" : "2ECC71"
+    label := g_muted ? "Mic Muted" : "Mic Active"
+    ; Colored status dot
+    osd.SetFont("s10 c" accentColor, "Segoe UI")
+    osd.Add("Text", "x12 y6 w14 h20 +0x200", Chr(0x25CF))   ; ● dot
+    ; Label text
+    osd.SetFont("s9 cE0E0E0", "Segoe UI Semibold")
+    osd.Add("Text", "x28 y6 h20 +0x200", label)
+    ; Show first to measure, then reposition above the clock
     osd.Show("NoActivate AutoSize")
     osd.GetPos(, , &osdW, &osdH)
-    ; Find the monitor the mouse cursor is on (multi-monitor aware)
-    MouseGetPos(&mx, &my)
-    monNum := 1
-    loop MonitorGetCount() {
-        MonitorGetWorkArea(A_Index, &_l, &_t, &_r, &_b)
-        if (mx >= _l && mx < _r && my >= _t && my < _b) {
-            monNum := A_Index
-            break
+    ; Pad width for breathing room
+    osdW += 12
+    osdH := 32
+    ; Win11 rounded corners via DWM (silently ignored on older Windows)
+    try DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", osd.Hwnd,
+        "Int", 33, "Int*", 2, "Int", 4)   ; DWMWCP_ROUND
+    ; Find the notification area (clock) position via Shell_TrayWnd
+    xPos := A_ScreenWidth - osdW - 12
+    yPos := A_ScreenHeight - osdH - 60   ; fallback above taskbar
+    try {
+        trayHwnd := WinExist("ahk_class Shell_TrayWnd")
+        if trayHwnd {
+            WinGetPos(&tbX, &tbY, &tbW, &tbH, "ahk_id " trayHwnd)
+            xPos := tbX + tbW - osdW - 12
+            yPos := tbY - osdH - 8
         }
     }
-    MonitorGetWorkArea(monNum, &workL, &workT, &workR, &workB)
-    xPos := workL + ((workR - workL - osdW) // 2)
-    if (g_osdPosition = "top")
-        yPos := workT + 50
-    else if (g_osdPosition = "center")
-        yPos := workT + ((workB - workT - osdH) // 2)
-    else   ; bottom (default)
-        yPos := workB - osdH - 50
     osd.Show("NoActivate x" xPos " y" yPos " w" osdW " h" osdH)
-    WinSetTransparent(200, "ahk_id " osd.Hwnd)
+    WinSetTransparent(235, "ahk_id " osd.Hwnd)
     g_osdGui := osd
     SetTimer(DismissOSD, -g_osdDuration)
 }
@@ -265,43 +297,30 @@ SyncTray() {
 
 ; Actually apply the icon/tooltip based on current g_muted state.
 SetTrayIcon() {
-    global g_muted, g_icoGreen, g_icoRed, g_version, g_deafened
+    global g_muted, g_icoGreen, g_icoRed, g_version, g_deafened, g_mode
     suffix := g_deafened ? " [DEAFENED]" : ""
+    modeName := (g_mode = "push-to-talk") ? " [PTT]" : ""
     if g_muted {
         ; Red / muted — use custom icon or fall back to a built-in "blocked" icon
         if (g_icoRed != "")
             TraySetIcon(g_icoRed)
         else
             TraySetIcon("shell32.dll", 131)
-        A_IconTip := "MicMute v" g_version " — Mic: MUTED" suffix
+        A_IconTip := "MicMute v" g_version " — Mic: MUTED" modeName suffix
     } else {
         ; Green / active — use custom icon or fall back to a built-in microphone icon
         if (g_icoGreen != "")
             TraySetIcon(g_icoGreen)
         else
             TraySetIcon("imageres.dll", 109)
-        A_IconTip := "MicMute v" g_version " — Mic: Active" suffix
+        A_IconTip := "MicMute v" g_version " — Mic: Active" modeName suffix
     }
-    SyncLED()
 }
 
-; Sync a keyboard LED with the current mute state (F-16).
-; Muted = LED ON, Active = LED OFF. Only active if g_ledIndicator is set.
-SyncLED() {
-    global g_muted, g_ledIndicator
-    if (g_ledIndicator = "")
-        return
-    currentState := GetKeyState(g_ledIndicator, "T")   ; toggle state
-    if (g_muted && !currentState)
-        SendInput("{" g_ledIndicator "}")
-    else if (!g_muted && currentState)
-        SendInput("{" g_ledIndicator "}")
-}
 
 ; ── ICON FLASH (P4-03) ──────────────────────────────────────────────────────
 ; Flash the tray icon 3 times on toggle to draw attention.
-; Uses a fast timer (100ms) with 6 ticks: tick 0=opposite, 1=current,
-; 2=opposite, 3=current, 4=opposite, 5=current (settled).
+; Uses a fast timer (100ms) with 2 ticks: tick 0=opposite, 1=current (settled).
 
 FlashIcon() {
     global g_flashing, g_flashCount
@@ -333,7 +352,7 @@ FlashTick() {
         SetTrayIcon()   ; restore correct icon
     }
     g_flashCount++
-    if (g_flashCount >= 6) {
+    if (g_flashCount >= 2) {
         SetTimer(FlashTick, 0)   ; stop timer
         g_flashing := false
         SetTrayIcon()            ; ensure final state is correct
@@ -418,23 +437,27 @@ ReinitMic() {
 ; ╚══════════════════════════════════════════════════════════════════════════╝
 
 ; Register or re-register the hotkey based on current g_mode.
+; Tracks previous hotkey so mode/key changes properly clean up the old binding.
 RegisterHotkey() {
     global g_hotkey, g_mode
-    ; Unregister any existing binding first (ignore errors if none exists)
-    try Hotkey(g_hotkey, "Off")
-    try Hotkey(g_hotkey " Up", "Off")
+    static prevHotkey := ""
+    ; If the physical key changed, disable the old binding first
+    if (prevHotkey != "" && prevHotkey != g_hotkey) {
+        try Hotkey(prevHotkey, "Off")
+        try Hotkey(prevHotkey " Up", "Off")
+    }
+    ; Register with new callback — Hotkey() replaces the callback even if key
+    ; was already registered.  No need to Off/On cycle the same key, which can
+    ; confuse AHK's internal hotkey state on mode switches (PTT→Toggle bug).
     try {
         if (g_mode = "push-to-talk") {
-            Hotkey(g_hotkey, (*) => PushToTalk())
-        } else if (g_mode = "push-to-mute") {
-            Hotkey(g_hotkey, (*) => PushToMute())
-        } else if (g_mode = "hybrid") {
-            Hotkey(g_hotkey, (*) => HybridMode())
+            Hotkey(g_hotkey, (*) => PushToTalk(), "On")
         } else {
-            ; Default: toggle mode
-            Hotkey(g_hotkey, (*) => ToggleMute())
+            Hotkey(g_hotkey, (*) => ToggleMute(), "On")
         }
+        prevHotkey := g_hotkey
     } catch as e {
+        prevHotkey := ""
         MsgBox("Invalid hotkey: `"" g_hotkey "`"`n`n" e.Message
             . "`n`nFalling back to tray-only mode."
             . "`nEdit the hotkey in MicMute.ini or MicMute.ahk.", "MicMute", "Icon!")
@@ -444,48 +467,17 @@ RegisterHotkey() {
 ; Push-to-talk: key down → unmute, key up → re-mute.
 ; Uses KeyWait to block the hotkey thread until the key is released.
 PushToTalk() {
-    global g_hotkey
-    SetMuteState(false)   ; unmute while held
+    global g_hotkey, g_mode
+    SetMuteState(false, true)   ; unmute while held (quiet — no flash/OSD)
+    Sleep(10)                   ; yield so tray icon repaints before KeyWait blocks
     keyName := ExtractKeyName(g_hotkey)
     KeyWait(keyName, "T30")   ; 30s safety timeout
-    SetMuteState(true)    ; re-mute on release (or timeout)
+    ; Guard: if mode was switched while we were blocked on KeyWait, don't re-mute
+    if (g_mode != "push-to-talk")
+        return
+    SetMuteState(true, true)    ; re-mute on release (quiet — no flash/OSD)
 }
 
-; Push-to-mute: key down → mute, key up → re-unmute.
-PushToMute() {
-    global g_hotkey
-    SetMuteState(true)    ; mute while held
-    keyName := ExtractKeyName(g_hotkey)
-    KeyWait(keyName, "T30")   ; 30s safety timeout
-    SetMuteState(false)   ; re-unmute on release (or timeout)
-}
-
-; Hybrid PTT/Toggle: short press (<threshold) = toggle, long press = PTT (F-06).
-; On key-down, starts a delayed timer. If key released before timer fires,
-; it's a toggle. If timer fires while held, unmute (PTT) until release.
-HybridMode() {
-    global g_hotkey, g_hybridThreshold, g_hybridPTTActive
-    g_hybridPTTActive := false
-    ; Start delayed PTT activation — fires only if key is still held
-    SetTimer(HybridPTTActivate, -g_hybridThreshold)
-    keyName := ExtractKeyName(g_hotkey)
-    KeyWait(keyName, "T30")   ; block until key release (30s safety)
-    SetTimer(HybridPTTActivate, 0)   ; cancel timer if it hasn't fired
-    if g_hybridPTTActive {
-        ; Long press — PTT was activated by timer; re-mute on release
-        SetMuteState(true)
-    } else {
-        ; Short press — timer never fired, perform a toggle
-        ToggleMute()
-    }
-}
-
-; Timer callback for hybrid mode — unmute when threshold elapses (key still held).
-HybridPTTActivate() {
-    global g_hybridPTTActive
-    g_hybridPTTActive := true
-    SetMuteState(false)
-}
 
 ; Extract the key name from a hotkey string for KeyWait.
 ; Strips all AHK modifier/prefix symbols: # ^ ! + ~ * $ < >
@@ -496,22 +488,31 @@ ExtractKeyName(hk) {
 
 ; Switch mode and re-register hotkey.
 SetMode(newMode) {
-    global g_mode
+    global g_mode, g_soundFeedback
     g_mode := newMode
+    ; PTT starts muted — ensure mic is off when entering PTT mode
+    if (newMode = "push-to-talk")
+        SetMuteState(true, true)
     RegisterHotkey()
     BuildTrayMenu()   ; rebuild to update checkmarks
+    SetTrayIcon()     ; update tooltip with mode name
     SaveConfig()
+    ; Quick two-tone chirp for mode switch — distinct from single mute/unmute beeps
+    if g_soundFeedback
+        PlayModeChirp(newMode)
     TrayTip("Mode: " FormatModeName(newMode), "MicMute", "Iconi")
     SetTimer(() => TrayTip(), -3000)
+}
+
+; Single-tone mode switch feedback — distinct from mute/unmute beeps.
+; 1175Hz = switched to Toggle, 1568Hz = switched to PTT.
+PlayModeChirp(mode) {
+    SoundBeep(mode = "push-to-talk" ? 1568 : 1175, 50)
 }
 
 FormatModeName(mode) {
     if (mode = "push-to-talk")
         return "Push-to-Talk"
-    if (mode = "push-to-mute")
-        return "Push-to-Mute"
-    if (mode = "hybrid")
-        return "Hybrid (PTT/Toggle)"
     return "Toggle"
 }
 
@@ -592,16 +593,223 @@ ApplyNewHotkey(dlg, hkCtrl, txtCtrl) {
         MsgBox("No hotkey entered. Keeping current hotkey.", "MicMute", "Icon!")
         return
     }
-    ; Unregister old hotkey
-    try Hotkey(g_hotkey, "Off")
-    try Hotkey(g_hotkey " Up", "Off")
     g_hotkey := newHK
-    RegisterHotkey()
+    RegisterHotkey()   ; handles unregistering the old key via prevHotkey tracking
     BuildTrayMenu()
     SaveConfig()
     dlg.Destroy()
     TrayTip("Hotkey changed to: " HotkeyToReadable(g_hotkey), "MicMute", "Iconi")
     SetTimer(() => TrayTip(), -3000)
+}
+
+; ╔══════════════════════════════════════════════════════════════════════════╗
+; ║  Settings GUI (F-05)                                                    ║
+; ╚══════════════════════════════════════════════════════════════════════════╝
+
+global g_settingsGui := 0
+
+ShowSettingsGUI() {
+    global
+    ; Singleton — bring existing window to front if open
+    if g_settingsGui {
+        try {
+            g_settingsGui.Show()
+            return
+        }
+        g_settingsGui := 0
+    }
+    dlg := Gui("+AlwaysOnTop", "MicMute — Settings")
+    dlg.BackColor := "FFFFFF"
+    dlg.SetFont("s9", "Segoe UI")
+
+    ; ── Behavior ──
+    dlg.SetFont("s9 Bold", "Segoe UI")
+    dlg.Add("Text", "x16 y14 w410 c444444", "Behavior")
+    dlg.SetFont("s9 norm", "Segoe UI")
+    dlg.Add("Progress", "x16 y+3 w410 h1 BackgroundE0E0E0 cE0E0E0", 100)
+    dlg.Add("CheckBox", "x28 y+10 vChkSoundFeedback" (g_soundFeedback ? " Checked" : ""), "Sound feedback on mute/unmute")
+    dlg.Add("CheckBox", "x28 y+6 vChkOSD" (g_osdEnabled ? " Checked" : ""), "On-screen display bubble on mute/unmute")
+    dlg.Add("Text", "x48 y+4 c888888", "Duration (ms):")
+    dlg.Add("Edit", "x+6 yp-3 w55 Number vEdtOSDDur", g_osdDuration)
+    dlg.Add("CheckBox", "x28 y+6 vChkMuteLock" (g_muteLock ? " Checked" : ""), "Mute Lock (prevent external apps from changing mute state)")
+    dlg.Add("CheckBox", "x28 y+6 vChkMiddleClick" (g_middleClickToggle ? " Checked" : ""), "Middle-click tray icon to toggle Toggle/PTT mode")
+    dlg.Add("CheckBox", "x28 y+6 vChkRunAtStartup" (FileExist(A_Startup "\MicMute.lnk") ? " Checked" : ""), "Run at startup")
+    dlg.Add("Text", "x28 y+10", "On startup:")
+    startOpts := ["Don't change", "Always muted", "Always unmuted", "Remember last"]
+    ddlStart := dlg.Add("DropDownList", "x+8 yp-3 w130 vDdlStartMuted", startOpts)
+    _startIdx := Map("no", 1, "yes", 2, "unmuted", 3, "last", 4)
+    ddlStart.Value := _startIdx.Has(g_startMuted) ? _startIdx[g_startMuted] : 1
+
+    ; ── Hotkeys ──
+    dlg.SetFont("s9 Bold", "Segoe UI")
+    dlg.Add("Text", "x16 y+14 w410 c444444", "Hotkeys")
+    dlg.SetFont("s9 norm", "Segoe UI")
+    dlg.Add("Progress", "x16 y+3 w410 h1 BackgroundE0E0E0 cE0E0E0", 100)
+    dlg.Add("Text", "x28 y+10", "Global deafen hotkey:")
+    dlg.Add("Hotkey", "x+8 yp-3 w130 vHkDeafen", g_deafenHotkey)
+    dlg.Add("Edit", "x+0 yp w0 h0 vEdtDeafenHK Hidden")  ; hidden store for manual WinKey value
+    dlg.Add("Button", "x+6 yp w90", "WinKey…").OnEvent("Click", (*) => ShowManualDeafenHK(dlg))
+
+    ; ── Custom Files ──
+    dlg.SetFont("s9 Bold", "Segoe UI")
+    dlg.Add("Text", "x16 y+14 w410 c444444", "Custom Files")
+    dlg.SetFont("s9 norm", "Segoe UI")
+    dlg.Add("Progress", "x16 y+3 w410 h1 BackgroundE0E0E0 cE0E0E0", 100)
+    dlg.Add("Text", "x28 y+10 w75", "Muted icon:")
+    dlg.Add("Edit", "x+0 yp w0 h0 vEdtIconMuted Hidden", g_iconMuted)
+    dlg.Add("Button", "x106 yp-3 w65", "Browse…").OnEvent("Click", (*) => BrowseForFile(dlg, "EdtIconMuted", "LblIconMuted", "Icon files (*.ico)"))
+    dlg.Add("Button", "x+3 yp w45", "Clear").OnEvent("Click", (*) => ClearFileField(dlg, "EdtIconMuted", "LblIconMuted"))
+    dlg.Add("Text", "x+6 yp+3 c555555 vLblIconMuted", FileLabel(g_iconMuted))
+    dlg.Add("Text", "x28 y+8 w75", "Active icon:")
+    dlg.Add("Edit", "x+0 yp w0 h0 vEdtIconActive Hidden", g_iconActive)
+    dlg.Add("Button", "x106 yp-3 w65", "Browse…").OnEvent("Click", (*) => BrowseForFile(dlg, "EdtIconActive", "LblIconActive", "Icon files (*.ico)"))
+    dlg.Add("Button", "x+3 yp w45", "Clear").OnEvent("Click", (*) => ClearFileField(dlg, "EdtIconActive", "LblIconActive"))
+    dlg.Add("Text", "x+6 yp+3 c555555 vLblIconActive", FileLabel(g_iconActive))
+    dlg.Add("Text", "x28 y+8 w75", "Mute sound:")
+    dlg.Add("Edit", "x+0 yp w0 h0 vEdtMuteSound Hidden", g_muteSound)
+    dlg.Add("Button", "x106 yp-3 w65", "Browse…").OnEvent("Click", (*) => BrowseForFile(dlg, "EdtMuteSound", "LblMuteSound", "Sound files (*.wav)"))
+    dlg.Add("Button", "x+3 yp w45", "Clear").OnEvent("Click", (*) => ClearFileField(dlg, "EdtMuteSound", "LblMuteSound"))
+    dlg.Add("Text", "x+6 yp+3 c555555 vLblMuteSound", FileLabel(g_muteSound))
+    dlg.Add("Text", "x28 y+8 w75", "Unmute sound:")
+    dlg.Add("Edit", "x+0 yp w0 h0 vEdtUnmuteSound Hidden", g_unmuteSound)
+    dlg.Add("Button", "x106 yp-3 w65", "Browse…").OnEvent("Click", (*) => BrowseForFile(dlg, "EdtUnmuteSound", "LblUnmuteSound", "Sound files (*.wav)"))
+    dlg.Add("Button", "x+3 yp w45", "Clear").OnEvent("Click", (*) => ClearFileField(dlg, "EdtUnmuteSound", "LblUnmuteSound"))
+    dlg.Add("Text", "x+6 yp+3 c555555 vLblUnmuteSound", FileLabel(g_unmuteSound))
+
+    ; ── Buttons ──
+    dlg.Add("Button", "x170 y+18 w80 Default", "OK").OnEvent("Click", (*) => ApplySettingsGUI(dlg, true))
+    dlg.Add("Button", "x+8 w80", "Apply").OnEvent("Click", (*) => ApplySettingsGUI(dlg, false))
+    dlg.Add("Button", "x+8 w80", "Cancel").OnEvent("Click", (*) => CloseSettingsGUI(dlg))
+    dlg.OnEvent("Close", (*) => CloseSettingsGUI(dlg))
+    g_settingsGui := dlg
+    dlg.Show("AutoSize")
+}
+
+CloseSettingsGUI(dlg) {
+    global g_settingsGui
+    dlg.Destroy()
+    g_settingsGui := 0
+}
+
+BrowseForFile(dlg, editName, lblName, filter) {
+    picked := FileSelect(1, , "Select file", filter)
+    if (picked != "") {
+        dlg[editName].Value := picked
+        dlg[lblName].Value := FileLabel(picked)
+    }
+}
+
+ClearFileField(dlg, editName, lblName) {
+    dlg[editName].Value := ""
+    dlg[lblName].Value := "(none)"
+}
+
+FileLabel(path) {
+    if (path = "")
+        return "(none)"
+    SplitPath(path, &name)
+    return name
+}
+
+ShowManualDeafenHK(parentDlg) {
+    pop := Gui("+AlwaysOnTop +Owner" parentDlg.Hwnd, "Manual WinKey Hotkey")
+    pop.SetFont("s10", "Segoe UI")
+    pop.Add("Text", , "Type AHK hotkey syntax:")
+    edt := pop.Add("Edit", "w200 vManualHK", parentDlg["EdtDeafenHK"].Value)
+    pop.Add("Text", "y+6 c888888", "Examples:  #+d = Win+Shift+D    #F9 = Win+F9")
+    pop.Add("Button", "Default w70 y+12", "OK").OnEvent("Click", (*) => ApplyManualDeafenHK(pop, parentDlg, edt))
+    pop.Add("Button", "x+8 w70", "Clear").OnEvent("Click", (*) => ClearManualDeafenHK(pop, parentDlg))
+    pop.Add("Button", "x+8 w70", "Cancel").OnEvent("Click", (*) => pop.Destroy())
+    pop.OnEvent("Close", (*) => pop.Destroy())
+    pop.Show()
+}
+
+ApplyManualDeafenHK(pop, parentDlg, edt) {
+    val := Trim(edt.Value)
+    parentDlg["EdtDeafenHK"].Value := val
+    if (val != "")
+        parentDlg["HkDeafen"].Value := ""  ; clear Hotkey control — manual takes priority
+    pop.Destroy()
+}
+
+ClearManualDeafenHK(pop, parentDlg) {
+    parentDlg["EdtDeafenHK"].Value := ""
+    pop.Destroy()
+}
+
+ApplySettingsGUI(dlg, close := true) {
+    global
+    ; Capture DDL index BEFORE Submit() — Submit can reset control state
+    startValues := ["no", "yes", "unmuted", "last"]
+    ddlIdx := dlg["DdlStartMuted"].Value
+    startVal := (ddlIdx >= 1 && ddlIdx <= 4) ? startValues[ddlIdx] : "no"
+
+    ; Submit(true) hides the GUI (OK), Submit(false) keeps it open (Apply)
+    saved := dlg.Submit(close)
+
+    ; Behavior
+    g_soundFeedback := saved.ChkSoundFeedback
+    g_osdEnabled := saved.ChkOSD
+    g_muteLock := saved.ChkMuteLock
+    g_lockDebounce := false
+    g_middleClickToggle := saved.ChkMiddleClick
+    g_startMuted := startVal
+    ; Run at startup — create or remove shortcut
+    shortcut := A_Startup "\MicMute.lnk"
+    if saved.ChkRunAtStartup && !FileExist(shortcut) {
+        if A_IsCompiled
+            FileCreateShortcut(A_ScriptFullPath, shortcut, A_ScriptDir,
+                , "MicMute — Global mic mute toggle", A_ScriptFullPath)
+        else
+            FileCreateShortcut(A_AhkPath, shortcut, A_ScriptDir,
+                '`"' A_ScriptFullPath '`"', "MicMute — Global mic mute toggle")
+    } else if !saved.ChkRunAtStartup && FileExist(shortcut) {
+        FileDelete(shortcut)
+    }
+    ; OSD
+    newDur := 1500
+    try newDur := Integer(Trim(saved.EdtOSDDur))
+    if (newDur < 500)
+        newDur := 500
+    g_osdDuration := newDur
+
+    ; Deafen hotkey — prefer raw text (supports Win combos), fall back to Hotkey control
+    rawDeafen := Trim(saved.EdtDeafenHK)
+    newDeafenHK := (rawDeafen != "") ? rawDeafen : saved.HkDeafen
+    if (newDeafenHK != g_deafenHotkey) {
+        if (g_deafenHotkey != "")
+            try Hotkey(g_deafenHotkey, "Off")
+        g_deafenHotkey := newDeafenHK
+        RegisterDeafenHotkey()
+    }
+
+    ; Custom icons — rebuild icon paths and refresh tray
+    g_iconMuted := Trim(saved.EdtIconMuted)
+    g_iconActive := Trim(saved.EdtIconActive)
+    g_icoRed := (g_iconMuted != "" && FileExist(g_iconMuted)) ? g_iconMuted
+        : FileExist(A_ScriptDir "\mic_off.ico") ? A_ScriptDir "\mic_off.ico" : ""
+    g_icoGreen := (g_iconActive != "" && FileExist(g_iconActive)) ? g_iconActive
+        : FileExist(A_ScriptDir "\mic_on.ico") ? A_ScriptDir "\mic_on.ico" : ""
+    SetTrayIcon()
+
+    ; Custom sounds
+    g_muteSound := Trim(saved.EdtMuteSound)
+    g_unmuteSound := Trim(saved.EdtUnmuteSound)
+
+    ; Persist and refresh
+    SaveConfig()
+    BuildTrayMenu()
+    if close {
+        dlg.Destroy()
+        g_settingsGui := 0
+    }
+    if close {
+        TrayTip("Settings saved.", "MicMute", "Iconi")
+        SetTimer(() => TrayTip(), -3000)
+    } else {
+        ToolTip("Settings applied.")
+        SetTimer(() => ToolTip(), -2000)
+    }
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -724,100 +932,60 @@ BuildTrayMenu() {
     hotkeyLabel := "Hotkey: " HotkeyToReadable(g_hotkey)
 
     A_TrayMenu.Delete()
-    A_TrayMenu.Add("Toggle Mute",       (*) => ToggleMute())
-    A_TrayMenu.Add(hotkeyLabel,          (*) => 0)
-    A_TrayMenu.Disable(hotkeyLabel)
-    A_TrayMenu.Add("Change Hotkey…",     (*) => ShowHotkeyDialog())
+    titleItem := "Toggle Mute — v" g_version
+    A_TrayMenu.Add(titleItem,            (*) => ToggleMute())
+    A_TrayMenu.Default := titleItem       ; bold text — marks it as the primary action
     A_TrayMenu.Add()
+    hotkeyItem := "Hotkey: " HotkeyToReadable(g_hotkey)
+    A_TrayMenu.Add(hotkeyItem,          (*) => ShowHotkeyDialog())
 
     ; ── Mode submenu (P2-01) ──
     modeMenu := Menu()
     modeMenu.Add("Toggle",              (*) => SetMode("toggle"))
     modeMenu.Add("Push-to-Talk",        (*) => SetMode("push-to-talk"))
-    modeMenu.Add("Push-to-Mute",        (*) => SetMode("push-to-mute"))
-    modeMenu.Add("Hybrid (PTT/Toggle)", (*) => SetMode("hybrid"))
-    if (g_mode = "toggle")
-        modeMenu.Check("Toggle")
-    else if (g_mode = "push-to-talk")
+    if (g_mode = "push-to-talk")
         modeMenu.Check("Push-to-Talk")
-    else if (g_mode = "push-to-mute")
-        modeMenu.Check("Push-to-Mute")
-    else if (g_mode = "hybrid")
-        modeMenu.Check("Hybrid (PTT/Toggle)")
-    A_TrayMenu.Add("Mode", modeMenu)
+    else
+        modeMenu.Check("Toggle")
+    modeLabel := "Mode: " FormatModeName(g_mode)
+    A_TrayMenu.Add(modeLabel, modeMenu)
 
-    ; ── Device submenu (P2-02) ──
-    devMenu := Menu()
-    devMenu.Add("System Default", SelectDevice.Bind(""))
-    if (g_deviceId = "")
-        devMenu.Check("System Default")
-    devMenu.Add()
-    devList := EnumCaptureDevices()
-    for dev in devList {
-        ; Use Bind to capture device ID by value in the closure
-        devMenu.Add(dev.name, SelectDevice.Bind(dev.id))
-        if (g_deviceId = dev.id)
-            devMenu.Check(dev.name)
-    }
-    A_TrayMenu.Add("Microphone", devMenu)
+    ; ── Device submenu (P2-02) — lazy-loaded on first open ──
+    global g_devMenu := Menu()
+    g_devMenu.Add("Loading…", (*) => 0)
+    g_devMenu.Disable("Loading…")
+    A_TrayMenu.Add("Mic Source", g_devMenu)
+    global g_devMenuPopulated := false
 
     A_TrayMenu.Add()
-    A_TrayMenu.Add("Sound Feedback",     (*) => ToggleSoundFeedback())
-    if g_soundFeedback
-        A_TrayMenu.Check("Sound Feedback")
-    A_TrayMenu.Add("Mute Lock",          (*) => ToggleMuteLock())
-    if g_muteLock
-        A_TrayMenu.Check("Mute Lock")
-    A_TrayMenu.Add("On-Screen Display",  (*) => ToggleOSD())
-    if g_osdEnabled
-        A_TrayMenu.Check("On-Screen Display")
+    A_TrayMenu.Add("Settings…",     (*) => ShowSettingsGUI())
     A_TrayMenu.Add()
-    A_TrayMenu.Add("Run at Startup",     (*) => ToggleStartup())
-    if FileExist(A_Startup "\MicMute.lnk")
-        A_TrayMenu.Check("Run at Startup")
+    A_TrayMenu.Add("Reinit Mic",    (*) => ReinitMic())
+    A_TrayMenu.Add("Sound Settings", (*) => Run("ms-settings:sound"))
     A_TrayMenu.Add()
-    A_TrayMenu.Add("Reinitialise Mic",   (*) => ReinitMic())
-    A_TrayMenu.Add("Sound Settings…",    (*) => Run("ms-settings:sound"))
-    A_TrayMenu.Add()
-    A_TrayMenu.Add("v" g_version,        (*) => 0)
-    A_TrayMenu.Disable("v" g_version)
-    A_TrayMenu.Add("Exit",               (*) => ExitApp())
-    A_TrayMenu.Default    := "Toggle Mute"
+    A_TrayMenu.Add("Exit",          (*) => ExitApp())
+    A_TrayMenu.Default    := titleItem
     A_TrayMenu.ClickCount := 1           ; single left-click fires default item
 }
 
-ToggleSoundFeedback() {
-    global g_soundFeedback
-    g_soundFeedback := !g_soundFeedback
-    if g_soundFeedback
-        A_TrayMenu.Check("Sound Feedback")
-    else
-        A_TrayMenu.Uncheck("Sound Feedback")
-    SaveConfig()
+; Populate the Microphone submenu on demand (lazy-loaded to speed up startup).
+PopulateDeviceMenu() {
+    global g_deviceId, g_devMenu, g_devMenuPopulated
+    g_devMenu.Delete()
+    g_devMenu.Add("System Default", SelectDevice.Bind(""))
+    if (g_deviceId = "")
+        g_devMenu.Check("System Default")
+    g_devMenu.Add()
+    devList := EnumCaptureDevices()
+    for dev in devList {
+        label := StrLen(dev.name) > 40 ? SubStr(dev.name, 1, 37) "…" : dev.name
+        g_devMenu.Add(label, SelectDevice.Bind(dev.id))
+        if (g_deviceId = dev.id)
+            g_devMenu.Check(label)
+    }
+    g_devMenuPopulated := true
 }
 
-ToggleMuteLock() {
-    global g_muteLock, g_lockDebounce
-    g_muteLock := !g_muteLock
-    g_lockDebounce := false
-    if g_muteLock
-        A_TrayMenu.Check("Mute Lock")
-    else
-        A_TrayMenu.Uncheck("Mute Lock")
-    SaveConfig()
-    TrayTip("Mute Lock: " (g_muteLock ? "ON" : "OFF"), "MicMute", "Iconi")
-    SetTimer(() => TrayTip(), -3000)
-}
-
-ToggleOSD() {
-    global g_osdEnabled
-    g_osdEnabled := !g_osdEnabled
-    if g_osdEnabled
-        A_TrayMenu.Check("On-Screen Display")
-    else
-        A_TrayMenu.Uncheck("On-Screen Display")
-    SaveConfig()
-}
 
 ToggleStartup() {
     shortcut := A_Startup "\MicMute.lnk"
@@ -844,61 +1012,80 @@ ToggleStartup() {
 ; ║  Configuration (INI file)                                                ║
 ; ╚══════════════════════════════════════════════════════════════════════════╝
 
-; Read settings from MicMute.ini if it exists. Falls back to defaults.
-LoadConfig() {
-    global g_hotkey, g_soundFeedback, g_muteOnLock, g_mode, g_deviceId
+; Ensure INI file has correct encoding. UTF-16 LE without BOM confuses the
+; Windows INI API (GetPrivateProfileString), causing reads to return truncated
+; values.  If detected, re-encode to UTF-8 (which the API handles natively).
+FixIniEncoding() {
     ini := A_ScriptDir "\MicMute.ini"
     if !FileExist(ini)
         return
+    try {
+        f := FileOpen(ini, "r", "RAW")
+        if !f || f.Length < 4
+            return
+        b1 := f.ReadUChar()
+        b2 := f.ReadUChar()
+        f.Close()
+        ; Already has UTF-16 BOM or is plain ANSI — nothing to fix
+        if (b1 = 0xFF && b2 = 0xFE) || (b2 != 0x00)
+            return
+        ; UTF-16 LE without BOM — read as UTF-16 and rewrite as UTF-8
+        content := FileRead(ini, "UTF-16-RAW")
+        FileDelete(ini)
+        FileAppend(content, ini, "CP0")
+    }
+}
+
+; Read settings from MicMute.ini if it exists. Falls back to defaults.
+LoadConfig() {
+    global
+    ini := A_ScriptDir "\MicMute.ini"
+    if !FileExist(ini)
+        return
+    FixIniEncoding()
     g_hotkey        := IniRead(ini, "General", "Hotkey", g_hotkey)
     g_soundFeedback := (Trim(IniRead(ini, "General", "SoundFeedback", "1")) = "1")
-    g_muteOnLock    := (Trim(IniRead(ini, "General", "MuteOnLock", "0")) = "1")
     g_mode          := Trim(IniRead(ini, "General", "Mode", "toggle"))
     g_deviceId      := Trim(IniRead(ini, "General", "DeviceId", ""))
-    g_unmuteOnExit  := (Trim(IniRead(ini, "General", "UnmuteOnExit", "1")) = "1")
     g_iconMuted     := Trim(IniRead(ini, "General", "IconMuted", ""))
     g_iconActive    := Trim(IniRead(ini, "General", "IconActive", ""))
-    g_ledIndicator  := StrLower(Trim(IniRead(ini, "General", "LEDIndicator", "")))
+    ; g_ledIndicator removed (F-16 deprecated)
     g_muteLock      := (Trim(IniRead(ini, "General", "MuteLock", "0")) = "1")
     g_muteSound     := Trim(IniRead(ini, "General", "MuteSound", ""))
     g_unmuteSound   := Trim(IniRead(ini, "General", "UnmuteSound", ""))
-    g_hybridThreshold := Integer(Trim(IniRead(ini, "General", "HybridThreshold", "300")))
-    if (g_hybridThreshold < 50)
-        g_hybridThreshold := 50   ; floor to prevent accidental zero
     g_osdEnabled    := (Trim(IniRead(ini, "General", "OSD_Enabled", "0")) = "1")
-    g_osdPosition   := StrLower(Trim(IniRead(ini, "General", "OSD_Position", "bottom")))
     g_osdDuration   := Integer(Trim(IniRead(ini, "General", "OSD_Duration", "1500")))
-    if (g_osdPosition != "top" && g_osdPosition != "bottom" && g_osdPosition != "center")
-        g_osdPosition := "bottom"
     if (g_osdDuration < 500)
         g_osdDuration := 500
     g_deafenHotkey  := Trim(IniRead(ini, "General", "DeafenHotkey", ""))
+    g_middleClickToggle := (Trim(IniRead(ini, "General", "MiddleClickToggle", "1")) = "1")
+    g_startMuted    := StrLower(Trim(IniRead(ini, "General", "StartMuted", "no")))
+    if (g_startMuted != "no" && g_startMuted != "yes" && g_startMuted != "unmuted" && g_startMuted != "last")
+        g_startMuted := "no"
     ; Validate mode
-    if (g_mode != "toggle" && g_mode != "push-to-talk" && g_mode != "push-to-mute" && g_mode != "hybrid")
+    if (g_mode != "toggle" && g_mode != "push-to-talk")
         g_mode := "toggle"
 }
 
 ; Save current settings to MicMute.ini.
 SaveConfig() {
-    global g_hotkey, g_soundFeedback, g_muteOnLock, g_mode, g_deviceId
+    global
     ini := A_ScriptDir "\MicMute.ini"
     IniWrite(g_hotkey, ini, "General", "Hotkey")
     IniWrite(g_soundFeedback ? "1" : "0", ini, "General", "SoundFeedback")
-    IniWrite(g_muteOnLock ? "1" : "0", ini, "General", "MuteOnLock")
     IniWrite(g_mode, ini, "General", "Mode")
     IniWrite(g_deviceId, ini, "General", "DeviceId")
-    IniWrite(g_unmuteOnExit ? "1" : "0", ini, "General", "UnmuteOnExit")
     IniWrite(g_iconMuted, ini, "General", "IconMuted")
     IniWrite(g_iconActive, ini, "General", "IconActive")
-    IniWrite(g_ledIndicator, ini, "General", "LEDIndicator")
-    IniWrite(g_hybridThreshold, ini, "General", "HybridThreshold")
+    ; LEDIndicator removed (F-16 deprecated)
     IniWrite(g_osdEnabled ? "1" : "0", ini, "General", "OSD_Enabled")
-    IniWrite(g_osdPosition, ini, "General", "OSD_Position")
     IniWrite(g_osdDuration, ini, "General", "OSD_Duration")
     IniWrite(g_muteLock ? "1" : "0", ini, "General", "MuteLock")
     IniWrite(g_muteSound, ini, "General", "MuteSound")
     IniWrite(g_unmuteSound, ini, "General", "UnmuteSound")
     IniWrite(g_deafenHotkey, ini, "General", "DeafenHotkey")
+    IniWrite(g_middleClickToggle ? "1" : "0", ini, "General", "MiddleClickToggle")
+    IniWrite(g_startMuted, ini, "General", "StartMuted")
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -911,31 +1098,18 @@ SaveConfig() {
 ; NOTE: Shared with MWBToggle — consider a shared library if more scripts need this.
 HotkeyToReadable(hk) {
     mods   := ""
-    prefix := RegExMatch(hk, "^([#^!+]+)", &m) ? m[1] : ""
-    key    := RegExReplace(hk, "^[#^!+]+", "")
+    prefix := RegExMatch(hk, "^([<>#^!+]+)", &m) ? m[1] : ""
+    key    := RegExReplace(hk, "^[<>#^!+]+", "")
+    side   := InStr(prefix, "<") ? "L" : InStr(prefix, ">") ? "R" : ""
     if (InStr(prefix, "#"))
-        mods .= "Win + "
+        mods .= side . "Win + "
     if (InStr(prefix, "^"))
-        mods .= "Ctrl + "
+        mods .= side . "Ctrl + "
     if (InStr(prefix, "!"))
-        mods .= "Alt + "
+        mods .= side . "Alt + "
     if (InStr(prefix, "+"))
-        mods .= "Shift + "
+        mods .= side . "Shift + "
     return mods . StrUpper(key)
-}
-
-; Handle workstation lock/unlock for auto-mute (P4-02).
-; Only active when g_muteOnLock = true and WTS notifications are registered.
-OnSessionChange(wParam, lParam, msg, hwnd) {
-    global g_pAEV, g_muted
-    ; WTS_SESSION_LOCK = 0x7
-    if (wParam = 0x7 && g_pAEV && !g_muted) {
-        hr := ComCall(14, g_pAEV, "Int", true, "Ptr", 0, "Int")   ; SetMute
-        if (hr = 0) {
-            g_muted := true
-            SyncTray()
-        }
-    }
 }
 
 ; Initialise IAudioEndpointVolume for a capture (mic) device.
@@ -998,24 +1172,89 @@ InitMicEndpoint(silent := false) {
     return pAEV
 }
 
+; ╔══════════════════════════════════════════════════════════════════════════╗
+; ║  Tray icon scroll-to-volume (F-18)                                      ║
+; ╚══════════════════════════════════════════════════════════════════════════╝
+
+; Detect mouse hover over our tray icon.
+; Sets g_overTrayIcon so #HotIf WheelUp/WheelDown can adjust mic volume.
+OnTrayNotify(wParam, lParam, msg, hwnd) {
+    global g_overTrayIcon, g_devMenuPopulated
+    event := lParam & 0xFFFF
+    if (event = 0x200) {   ; WM_MOUSEMOVE — cursor is over our icon
+        g_overTrayIcon := true
+        SetTimer(ClearTrayHover, -1500)
+    }
+    if (event = 0x205) {   ; WM_RBUTTONUP — context menu about to open
+        if !g_devMenuPopulated
+            PopulateDeviceMenu()
+    }
+    ; Return nothing — let AHK's default tray handler process the event
+}
+
+ClearTrayHover() {
+    global g_overTrayIcon
+    g_overTrayIcon := false
+}
+
+; Adjust microphone input volume by a fractional step.
+; Uses IAudioEndpointVolume::Get/SetMasterVolumeLevelScalar (vtable 8/9).
+AdjustMicVolume(step) {
+    global g_pAEV
+    if !g_pAEV
+        return
+    ; GetMasterVolumeLevelScalar (vtable 9)
+    try hr := ComCall(9, g_pAEV, "Float*", &level := 0.0, "Int")
+    catch
+        return
+    if (hr < 0)
+        return
+    newLevel := level + step
+    if (newLevel > 1.0)
+        newLevel := 1.0
+    if (newLevel < 0.0)
+        newLevel := 0.0
+    ; SetMasterVolumeLevelScalar (vtable 8)
+    try ComCall(8, g_pAEV, "Float", newLevel, "Ptr", 0, "Int")
+    catch
+        return
+    pct := Round(newLevel * 100)
+    ToolTip("Mic: " pct "%")
+    SetTimer(() => ToolTip(), -1500)
+}
+
 ; Release COM handle and clean up on exit.
 Cleanup(*) {
-    global g_pAEV, g_muteOnLock, g_unmuteOnExit, g_muted, g_ledIndicator
+    global g_pAEV, g_muted
     global g_deafened, g_speakerWasMuted
     ; Restore speaker state if deafened (F-20)
     if g_deafened
         try SoundSetMute(g_speakerWasMuted)
-    ; Restore LED to its pre-MicMute state (F-16)
-    if (g_ledIndicator != "") {
-        currentLED := GetKeyState(g_ledIndicator, "T")
-        if (currentLED != g_ledInitialState)
-            SendInput("{" g_ledIndicator "}")
-    }
-    ; Unmute mic on exit to prevent "dead mic" after quitting (F-10)
-    if g_unmuteOnExit && g_pAEV && g_muted
-        try ComCall(14, g_pAEV, "Int", false, "Ptr", 0, "Int")   ; SetMute(false)
-    if g_muteOnLock
-        DllCall("Wtsapi32\WTSUnRegisterSessionNotification", "Ptr", A_ScriptHwnd)
     if g_pAEV
         ObjRelease(g_pAEV)
 }
+
+; ╔══════════════════════════════════════════════════════════════════════════╗
+; ║  Context-sensitive hotkeys                                              ║
+; ╚══════════════════════════════════════════════════════════════════════════╝
+
+; Scroll over tray icon to adjust mic volume (F-18).
+; Middle-click to toggle Toggle/PTT mode (uses low-level hook — Win11 tray
+; doesn't forward WM_MBUTTONDOWN/UP via the notification callback).
+#HotIf g_overTrayIcon
+WheelUp::{
+    SetTimer(ClearTrayHover, -1500)
+    AdjustMicVolume(0.05)
+}
+WheelDown::{
+    SetTimer(ClearTrayHover, -1500)
+    AdjustMicVolume(-0.05)
+}
+MButton::{
+    SetTimer(ClearTrayHover, -1500)
+    global g_mode, g_middleClickToggle
+    if !g_middleClickToggle
+        return
+    SetMode((g_mode = "toggle") ? "push-to-talk" : "toggle")
+}
+#HotIf
