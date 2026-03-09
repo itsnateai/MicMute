@@ -16,9 +16,9 @@
 ; ║    Custom sounds, OSD overlay, mute lock, deafen mode,                 ║
 ; ║    live hotkey rebinding, custom icon colors, unmute on exit            ║
 ; ║                                                                          ║
-; ║  Files (place in the same folder as this script):                       ║
-; ║    mic_on.ico   — shown when mic is active  (falls back to AHK default) ║
-; ║    mic_off.ico  — shown when mic is muted   (falls back to AHK default) ║
+; ║  Files (place in same folder, or use compiled .exe with icons embedded): ║
+; ║    mic_on.ico   — mic active (green) — embedded in .exe as resource 10 ║
+; ║    mic_off.ico  — mic muted  (red)   — embedded in .exe as resource 11 ║
 ; ║    MicMute.ini  — optional config file (auto-created via tray menu)     ║
 ; ║                                                                          ║
 ; ║  Note: MicMute auto-detects when you change or unplug your mic.        ║
@@ -28,6 +28,10 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent
+
+; ── Embed icons as PE resources so compiled .exe works standalone ────────────
+;@Ahk2Exe-AddResource mic_on.ico, 10
+;@Ahk2Exe-AddResource mic_off.ico, 11
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
@@ -104,9 +108,8 @@ if g_pAEV {
 }
 
 ; ── TRAY ICONS ───────────────────────────────────────────────────────────────
-; Place mic_on.ico and mic_off.ico in the same folder as this script.
-; If either file is missing, a Windows built-in icon is used as a fallback.
-; Priority: custom INI path > mic_on/mic_off.ico > built-in fallback (F-17)
+; Priority: custom INI path > .ico file on disk > embedded PE resource > Windows built-in
+; Compiled .exe embeds mic_on.ico (resource 10) and mic_off.ico (resource 11).
 global g_icoGreen := (g_iconActive != "" && FileExist(g_iconActive)) ? g_iconActive
     : FileExist(A_ScriptDir "\mic_on.ico")  ? A_ScriptDir "\mic_on.ico"  : ""
 global g_icoRed   := (g_iconMuted != "" && FileExist(g_iconMuted)) ? g_iconMuted
@@ -301,16 +304,20 @@ SetTrayIcon() {
     suffix := g_deafened ? " [DEAFENED]" : ""
     modeName := (g_mode = "push-to-talk") ? " [PTT]" : ""
     if g_muted {
-        ; Red / muted — use custom icon or fall back to a built-in "blocked" icon
+        ; Red / muted — custom file > embedded resource > Windows built-in
         if (g_icoRed != "")
             TraySetIcon(g_icoRed)
+        else if A_IsCompiled
+            TraySetIcon(A_ScriptFullPath, -11, true)
         else
             TraySetIcon("shell32.dll", 131)
         A_IconTip := "MicMute v" g_version " — Mic: MUTED" modeName suffix
     } else {
-        ; Green / active — use custom icon or fall back to a built-in microphone icon
+        ; Green / active — custom file > embedded resource > Windows built-in
         if (g_icoGreen != "")
             TraySetIcon(g_icoGreen)
+        else if A_IsCompiled
+            TraySetIcon(A_ScriptFullPath, -10, true)
         else
             TraySetIcon("imageres.dll", 109)
         A_IconTip := "MicMute v" g_version " — Mic: Active" modeName suffix
@@ -340,11 +347,15 @@ FlashTick() {
         if g_muted {
             if (g_icoGreen != "")
                 TraySetIcon(g_icoGreen)
+            else if A_IsCompiled
+                TraySetIcon(A_ScriptFullPath, -10, true)
             else
                 TraySetIcon("imageres.dll", 109)
         } else {
             if (g_icoRed != "")
                 TraySetIcon(g_icoRed)
+            else if A_IsCompiled
+                TraySetIcon(A_ScriptFullPath, -11, true)
             else
                 TraySetIcon("shell32.dll", 131)
         }
@@ -785,6 +796,7 @@ ApplySettingsGUI(dlg, close := true) {
     }
 
     ; Custom icons — rebuild icon paths and refresh tray
+    ; File paths stored here; embedded PE resources handled in SetTrayIcon() fallback
     g_iconMuted := Trim(saved.EdtIconMuted)
     g_iconActive := Trim(saved.EdtIconActive)
     g_icoRed := (g_iconMuted != "" && FileExist(g_iconMuted)) ? g_iconMuted
