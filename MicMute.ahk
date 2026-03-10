@@ -44,7 +44,7 @@ global g_version := "1.7.0"
 ;    "^!m"   →  Ctrl + Alt + M
 ;    "#+a"   →  Win  + Shift + A
 ;    "F13"   →  F13 key (if your keyboard has it)
-global g_hotkey        := ">!,"
+global g_hotkey        := "#+a"
 global g_soundFeedback := true
 global g_mode          := "toggle"     ; "toggle", "push-to-talk"
 global g_deviceId      := ""           ; empty = system default

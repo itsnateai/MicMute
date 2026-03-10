@@ -40,7 +40,7 @@ Right-click the tray icon → **Settings…** → check **Run at startup**.
 
 Mutes and unmutes your default microphone at the OS level using a global hotkey. Works across all applications — great for quickly muting during calls, streams, or recordings.
 
-- **Hotkey**: `Right Alt + ,` (configurable, rebindable at runtime)
+- **Hotkey**: `Win + Shift + A` (configurable, rebindable at runtime)
 - **Tray icon**: Green = mic active, Red = mic muted
 - **Left-click** tray icon to toggle
 - **Middle-click** tray icon to switch between Toggle and PTT modes
@@ -65,7 +65,7 @@ All settings are accessible through the **Settings GUI** (right-click tray → S
 
 ```ini
 [General]
-Hotkey=>!,
+Hotkey=#+a
 SoundFeedback=1
 Mode=toggle
 DeviceId=
@@ -83,7 +83,7 @@ StartMuted=no
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `Hotkey` | `>!,` (Right Alt+,) | Global mute toggle hotkey |
+| `Hotkey` | `#+a` (Win+Shift+A) | Global mute toggle hotkey |
 | `SoundFeedback` | `1` | Audible beep on toggle (0 to disable) |
 | `Mode` | `toggle` | Hotkey mode: `toggle` or `push-to-talk` |
 | `DeviceId` | _(empty)_ | Specific mic device ID (empty = system default) |
@@ -103,7 +103,6 @@ StartMuted=no
 Modifier symbols: `#` = Win, `^` = Ctrl, `!` = Alt, `+` = Shift
 
 Examples:
-- `>!,` → Right Alt + , (default)
 - `^!m` → Ctrl + Alt + M
 - `#+a` → Win + Shift + A
 - `F13` → F13 key
