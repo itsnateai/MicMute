@@ -45,7 +45,6 @@ Mutes and unmutes your default microphone at the OS level using a global hotkey.
 - **Left-click** tray icon to toggle
 - **Middle-click** tray icon to switch between Toggle and PTT modes
 - **Right-click** tray icon for full menu
-- **Scroll wheel** over tray icon to adjust mic volume (5% steps)
 - **Sound feedback**: audible beep or custom WAV on toggle
 - **Icon flash**: tray icon flashes briefly on toggle for visibility
 - **On-screen display**: optional floating overlay shows MUTED/ACTIVE on toggle
@@ -164,7 +163,7 @@ Control what happens to your mic when MicMute starts:
 
 MicMute uses Windows Core Audio COM APIs (`IAudioEndpointVolume`) to control the default capture device at the OS level. This means the mute applies system-wide — every application sees the mic as muted.
 
-A background timer (every 3 seconds) monitors the audio endpoint to:
+A background timer (every 5 seconds) monitors the audio endpoint to:
 - Auto-detect device changes (mic plugged/unplugged)
 - Sync the tray icon if another app changes the mute state
 - Enforce mute lock if enabled

@@ -1,6 +1,6 @@
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  MicMute.ahk  —  Global microphone mute toggle                         ║
-; ║  Version: 1.5.0                                                         ║
+; ║  Version: 1.7.0                                                         ║
 ; ║  Requires: AutoHotKey v2  (https://www.autohotkey.com/)                ║
 ; ║                                                                          ║
 ; ║  • Left-click  tray icon  → toggle mute                                 ║
@@ -35,7 +35,7 @@ Persistent
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
-global g_version := "1.6.0"
+global g_version := "1.7.0"
 
 ;  Defaults — overridden by MicMute.ini if present.
 ;  Change g_hotkey to whatever combo you prefer.
@@ -63,7 +63,6 @@ global g_deafened      := false        ; true when deafened (mic + speakers mute
 global g_ledInitialState := false      ; DEPRECATED: kept for INI compat
 global g_speakerWasMuted := false      ; remember speaker state before deafen (F-20)
 global g_startMuted     := "no"        ; startup mute: "no", "yes", "unmuted", "last" (F-14)
-global g_overTrayIcon   := false       ; true when mouse hovers our tray icon (F-18)
 global g_middleClickToggle := true     ; middle-click tray icon to toggle between Toggle/PTT modes
 
 ; Load overrides from INI (if it exists)
@@ -140,13 +139,13 @@ if !g_pAEV {
 }
 
 ; ── PERIODIC SYNC ────────────────────────────────────────────────────────────
-; Every 3 seconds, verify the audio endpoint is still valid and sync
+; Every 5 seconds, verify the audio endpoint is still valid and sync
 ; the tray icon if another app (or Windows Settings) changed the mute state.
 ; Handles both device hotplug (P1-01) and external mute changes (P1-02).
-SetTimer(SyncMuteState, 3000)
+SetTimer(SyncMuteState, 5000)
 
-; ── TRAY SCROLL DETECTION (F-18) ─────────────────────────────────────────
-; Track when the mouse hovers over our tray icon for scroll-to-volume.
+; ── TRAY NOTIFICATION HANDLER ────────────────────────────────────────────
+; Handle middle-click (mode toggle) and right-click (device menu) on tray icon.
 OnMessage(0x404, OnTrayNotify)
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1192,54 +1191,22 @@ InitMicEndpoint(silent := false) {
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
-; ║  Tray icon scroll-to-volume (F-18)                                      ║
+; ║  Tray notification handler                                              ║
 ; ╚══════════════════════════════════════════════════════════════════════════╝
 
-; Detect mouse hover over our tray icon.
-; Sets g_overTrayIcon so #HotIf WheelUp/WheelDown can adjust mic volume.
+; Handle tray icon notification events (right-click, middle-click).
 OnTrayNotify(wParam, lParam, msg, hwnd) {
-    global g_overTrayIcon, g_devMenuPopulated
+    global g_devMenuPopulated, g_mode, g_middleClickToggle
     event := lParam & 0xFFFF
-    if (event = 0x200) {   ; WM_MOUSEMOVE — cursor is over our icon
-        g_overTrayIcon := true
-        SetTimer(ClearTrayHover, -1500)
-    }
     if (event = 0x205) {   ; WM_RBUTTONUP — context menu about to open
         if !g_devMenuPopulated
             PopulateDeviceMenu()
     }
+    if (event = 0x208) {   ; WM_MBUTTONUP — middle-click to toggle mode
+        if g_middleClickToggle
+            SetMode((g_mode = "toggle") ? "push-to-talk" : "toggle")
+    }
     ; Return nothing — let AHK's default tray handler process the event
-}
-
-ClearTrayHover() {
-    global g_overTrayIcon
-    g_overTrayIcon := false
-}
-
-; Adjust microphone input volume by a fractional step.
-; Uses IAudioEndpointVolume::Get/SetMasterVolumeLevelScalar (vtable 8/9).
-AdjustMicVolume(step) {
-    global g_pAEV
-    if !g_pAEV
-        return
-    ; GetMasterVolumeLevelScalar (vtable 9)
-    try hr := ComCall(9, g_pAEV, "Float*", &level := 0.0, "Int")
-    catch
-        return
-    if (hr < 0)
-        return
-    newLevel := level + step
-    if (newLevel > 1.0)
-        newLevel := 1.0
-    if (newLevel < 0.0)
-        newLevel := 0.0
-    ; SetMasterVolumeLevelScalar (vtable 8)
-    try ComCall(8, g_pAEV, "Float", newLevel, "Ptr", 0, "Int")
-    catch
-        return
-    pct := Round(newLevel * 100)
-    ToolTip("Mic: " pct "%")
-    SetTimer(() => ToolTip(), -1500)
 }
 
 ; Release COM handle and clean up on exit.
@@ -1253,27 +1220,3 @@ Cleanup(*) {
         ObjRelease(g_pAEV)
 }
 
-; ╔══════════════════════════════════════════════════════════════════════════╗
-; ║  Context-sensitive hotkeys                                              ║
-; ╚══════════════════════════════════════════════════════════════════════════╝
-
-; Scroll over tray icon to adjust mic volume (F-18).
-; Middle-click to toggle Toggle/PTT mode (uses low-level hook — Win11 tray
-; doesn't forward WM_MBUTTONDOWN/UP via the notification callback).
-#HotIf g_overTrayIcon
-WheelUp::{
-    SetTimer(ClearTrayHover, -1500)
-    AdjustMicVolume(0.05)
-}
-WheelDown::{
-    SetTimer(ClearTrayHover, -1500)
-    AdjustMicVolume(-0.05)
-}
-MButton::{
-    SetTimer(ClearTrayHover, -1500)
-    global g_mode, g_middleClickToggle
-    if !g_middleClickToggle
-        return
-    SetMode((g_mode = "toggle") ? "push-to-talk" : "toggle")
-}
-#HotIf
