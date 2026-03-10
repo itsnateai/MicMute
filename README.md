@@ -23,7 +23,7 @@ Global microphone mute/unmute toggle for Windows with a system tray indicator.
 
 ### Quick Start
 
-1. Download the latest release (`MicMute.exe`) — no AutoHotkey installation needed, icons are embedded
+1. Download the latest release ([`MicMute.exe`](https://github.com/itsnateai/MicMute/releases/latest)) — no AutoHotkey installation needed, icons are embedded
 2. Or clone/download this repo and run `MicMute.ahk` with [AutoHotkey v2](https://www.autohotkey.com/)
 
 ### Show Tray Icon
