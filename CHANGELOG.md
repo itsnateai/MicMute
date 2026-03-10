@@ -2,6 +2,16 @@
 
 All notable changes to MicMute are documented here.
 
+## [1.8.0] - 2026-03-10
+
+### Added
+- **Help Window** — comprehensive in-app help accessible from Settings GUI. Covers all features: modes, deafen, hotkeys, settings, custom files, and troubleshooting. Resizable window with scrollable content.
+
+### Fixed
+- **Default hotkey restored** — default hotkey reverted to Win+Shift+A (`#+a`) as intended.
+- **Unmute-on-exit bug** — fixed cleanup edge case from audit.
+- **CHANGELOG gaps** — filled missing documentation from prior releases.
+
 ## [1.7.0] - 2026-03-10
 
 ### Changed

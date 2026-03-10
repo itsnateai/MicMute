@@ -35,7 +35,7 @@ Persistent
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
-global g_version := "1.7.0"
+global g_version := "1.8.0"
 
 ;  Defaults — overridden by MicMute.ini if present.
 ;  Change g_hotkey to whatever combo you prefer.
@@ -613,6 +613,107 @@ ApplyNewHotkey(dlg, hkCtrl, txtCtrl) {
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
+; ║  Help Window                                                            ║
+; ╚══════════════════════════════════════════════════════════════════════════╝
+
+global g_helpGui := 0
+
+ShowHelpWindow() {
+    global g_helpGui
+    if g_helpGui {
+        try {
+            g_helpGui.Show()
+            return
+        }
+        g_helpGui := 0
+    }
+    hlp := Gui("+AlwaysOnTop +Resize +MinSize400x300", "MicMute v" g_version " — Help")
+    hlp.BackColor := "FFFFFF"
+    hlp.SetFont("s9", "Segoe UI")
+
+    helpText := "
+    (
+MICMUTE — Global Microphone Mute Toggle
+
+MicMute lets you mute and unmute your microphone system-wide using a hotkey or the tray icon. It works at the Windows audio level, so it affects all apps at once — Zoom, Discord, Teams, etc.
+
+Green tray icon = mic is active (unmuted)
+Red tray icon = mic is muted
+
+─── BASIC USAGE ─────────────────────────────────
+
+• Left-click the tray icon to toggle mute.
+• Press your hotkey (default: Right-Alt + Comma) to toggle from anywhere.
+• Right-click the tray icon for the full menu (change mode, pick a mic, open settings, etc.).
+• Change your hotkey anytime via Tray → "Hotkey: ..." in the menu.
+
+─── MODES ───────────────────────────────────────
+
+Toggle (default): Press the hotkey once to mute, press again to unmute.
+
+Push-to-Talk: Hold the hotkey to unmute. Releasing it mutes you again. Useful for noisy environments where you only want to be heard while actively speaking.
+
+Switch modes via the tray menu (Mode → Toggle / Push-to-Talk), or enable "Middle-click tray icon to toggle" in Settings to quickly swap between them.
+
+─── DEAFEN MODE ─────────────────────────────────
+
+Deafen mutes both your microphone AND your speakers at the same time. Useful for stepping away or silencing everything quickly. Assign a hotkey in Settings under the Hotkeys section. Press again to undeafen (restores both to their previous state).
+
+─── SETTINGS ────────────────────────────────────
+
+Sound feedback: Plays a short tone when you mute or unmute. Mute plays a lower pitch (B4), unmute plays a higher pitch (A5). You can replace these with custom .wav files under Custom Files.
+
+On-screen display (OSD): Shows a small dark floating bubble in the top-right corner of your screen when you toggle mute. The Duration setting controls how long it stays visible (minimum 500 ms).
+
+Mute Lock: Prevents other applications from silently unmuting or muting your mic. MicMute checks every few seconds and re-applies its own mute state if something changed it. Useful if apps like Zoom or Teams override your mute.
+
+Middle-click toggle: When enabled, middle-clicking the tray icon swaps between Toggle and Push-to-Talk mode. A quick way to switch without opening the menu.
+
+Run at startup: Creates a Windows startup shortcut so MicMute launches automatically when you log in.
+
+On startup: Controls what happens to your mic when MicMute starts:
+  • Don't change — leaves your mic however it was.
+  • Always muted — forces mic muted on launch.
+  • Always unmuted — forces mic unmuted on launch.
+  • Remember last — restores the mute state from your last session.
+
+─── HOTKEYS ─────────────────────────────────────
+
+Your main mute/unmute hotkey is set via the tray menu (right-click → "Hotkey: ..."). The Settings window has a separate field for the Deafen hotkey.
+
+Both support Windows key combinations (like Win+Shift+D). Use the "WinKey..." button to enter these using AHK syntax:
+  # = Win,  ^ = Ctrl,  ! = Alt,  + = Shift
+  Example: #+d means Win+Shift+D
+
+─── CUSTOM FILES ────────────────────────────────
+
+Muted icon / Active icon: Replace the default red/green tray icons with your own .ico files. Useful for colorblind users or personal preference.
+
+Mute sound / Unmute sound: Replace the default beep tones with your own .wav files for audio feedback.
+
+Use Browse to pick a file, or Clear to revert to the defaults.
+
+─── MIC SOURCE ──────────────────────────────────
+
+Right-click the tray icon → "Mic Source" to choose which microphone MicMute controls. By default it uses your Windows system default. If you switch mics or plug in a new one, MicMute auto-detects the change and reconnects.
+
+You can also use Tray → "Reinit Mic" to manually force a reconnect.
+    )"
+
+    hlp.Add("Edit", "x10 y10 w440 h400 ReadOnly -E0x200 Multi +VScroll", helpText)
+    hlp.OnEvent("Close", (*) => (g_helpGui.Destroy(), g_helpGui := 0))
+    hlp.OnEvent("Size", HelpResize)
+    g_helpGui := hlp
+    hlp.Show("w460 h420")
+}
+
+HelpResize(hlp, minMax, w, h) {
+    if minMax = -1  ; minimized
+        return
+    try hlp["Edit1"].Move(10, 10, w - 20, h - 20)
+}
+
+; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  Settings GUI (F-05)                                                    ║
 ; ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -688,6 +789,7 @@ ShowSettingsGUI() {
 
     ; ── Buttons ──
     dlg.Add("Button", "x16 y+18 w80", "GitHub").OnEvent("Click", (*) => Run("https://github.com/itsnateai/MicMute"))
+    dlg.Add("Button", "x+6 yp w55", "Help").OnEvent("Click", (*) => ShowHelpWindow())
     dlg.Add("Button", "x170 yp w80 Default", "OK").OnEvent("Click", (*) => ApplySettingsGUI(dlg, true))
     dlg.Add("Button", "x+8 w80", "Apply").OnEvent("Click", (*) => ApplySettingsGUI(dlg, false))
     dlg.Add("Button", "x+8 w80", "Cancel").OnEvent("Click", (*) => CloseSettingsGUI(dlg))
