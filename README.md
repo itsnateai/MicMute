@@ -4,6 +4,16 @@ Global microphone mute/unmute toggle for Windows with a system tray indicator.
 
 **[Installation](#installation)** · **[Features](#features)** · **[Configuration](#configuration)** · **[Tray Menu](#tray-menu)** · **[How It Works](#how-it-works)**
 
+## Screenshots
+
+| Tray Icon (Active) | Tray Icon (Muted) |
+|:---:|:---:|
+| ![Mic Active](screenshots/micicon1.png) | ![Mic Muted](screenshots/micicon2.png) |
+
+| Tray Menu | Settings |
+|:---:|:---:|
+| ![Tray Menu](screenshots/micmutemenu.png) | ![Settings](screenshots/micmutesettings.png) |
+
 ## Installation
 
 ### Requirements
