@@ -1216,7 +1216,11 @@ Cleanup(*) {
     ; Restore speaker state if deafened (F-20)
     if g_deafened
         try SoundSetMute(g_speakerWasMuted)
-    if g_pAEV
+    if g_pAEV {
+        ; Unmute on exit (F-10) — prevent "dead mic" after MicMute closes
+        if g_muted
+            try ComCall(14, g_pAEV, "Int", false, "Ptr", 0, "Int")   ; SetMute(false)
         ObjRelease(g_pAEV)
+    }
 }
 

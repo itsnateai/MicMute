@@ -2,6 +2,13 @@
 
 All notable changes to MicMute are documented here.
 
+## [1.7.0] - 2026-03-10
+
+### Changed
+- **Removed scroll-to-volume** — mic volume scroll via mouse wheel over tray icon removed. It required a system-wide mouse hook, causing ~0.5% idle CPU overhead and interfering with normal scroll behaviour. Middle-click mode toggle is now handled via a zero-overhead tray notification callback instead.
+- **Sync timer** — periodic mute-state sync interval increased from 3 s to 5 s (reduces background wakeups while remaining responsive).
+- Version bumped to 1.7.0
+
 ## [1.6.0] - 2026-03-09
 
 ### Changed
