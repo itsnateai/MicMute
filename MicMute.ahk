@@ -1,6 +1,6 @@
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  MicMute.ahk  —  Global microphone mute toggle                         ║
-; ║  Version: 1.7.0                                                         ║
+; ║  Version: 1.8.0                                                         ║
 ; ║  Requires: AutoHotKey v2  (https://www.autohotkey.com/)                ║
 ; ║                                                                          ║
 ; ║  • Left-click  tray icon  → toggle mute                                 ║
@@ -1101,27 +1101,6 @@ PopulateDeviceMenu() {
 }
 
 
-ToggleStartup() {
-    shortcut := A_Startup "\MicMute.lnk"
-    if FileExist(shortcut) {
-        FileDelete(shortcut)
-        A_TrayMenu.Uncheck("Run at Startup")
-        ToolTip("Startup shortcut removed.")
-    } else {
-        ; Create shortcut — works for both compiled .exe and raw .ahk
-        if A_IsCompiled {
-            FileCreateShortcut(A_ScriptFullPath, shortcut, A_ScriptDir,
-                , "MicMute — Global mic mute toggle", A_ScriptFullPath)
-        } else {
-            FileCreateShortcut(A_AhkPath, shortcut, A_ScriptDir,
-                '`"' A_ScriptFullPath '`"', "MicMute — Global mic mute toggle")
-        }
-        A_TrayMenu.Check("Run at Startup")
-        ToolTip("Will start with Windows.")
-    }
-    SetTimer(() => ToolTip(), -3000)
-}
-
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  Configuration (INI file)                                                ║
 ; ╚══════════════════════════════════════════════════════════════════════════╝
@@ -1168,7 +1147,9 @@ LoadConfig() {
     g_muteSound     := Trim(IniRead(ini, "General", "MuteSound", ""))
     g_unmuteSound   := Trim(IniRead(ini, "General", "UnmuteSound", ""))
     g_osdEnabled    := (Trim(IniRead(ini, "General", "OSD_Enabled", "0")) = "1")
-    g_osdDuration   := Integer(Trim(IniRead(ini, "General", "OSD_Duration", "1500")))
+    try g_osdDuration := Integer(Trim(IniRead(ini, "General", "OSD_Duration", "1500")))
+    catch
+        g_osdDuration := 1500
     if (g_osdDuration < 500)
         g_osdDuration := 500
     g_deafenHotkey  := Trim(IniRead(ini, "General", "DeafenHotkey", ""))
