@@ -13,7 +13,6 @@ $RECYCLE.BIN/
 *.sync-tmp
 
 # Task Management
-AUDIT_TASKS.md
 TODO_LIST.md
 SCHEDULED_TASKS.md
 

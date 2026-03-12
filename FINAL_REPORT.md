@@ -17,7 +17,7 @@ MicMute is a Windows system tray utility that provides a global hotkey to toggle
 - **System tray indicator** — green (active) / red (muted) with flash animation
 - **Push-to-talk mode** — hold to unmute, release to mute (30s safety timeout)
 - **Deafen mode** — separate hotkey mutes mic + speakers simultaneously
-- **On-screen display** — floating MUTED/ACTIVE overlay, multi-monitor aware
+- **On-screen display** — floating MUTED/ACTIVE overlay above taskbar
 - **Settings GUI** — full graphical settings for all options (behavior, OSD, hotkeys, custom files)
 - **Audio device selector** — pick specific mic from tray submenu, persists in INI
 - **Custom sounds and icons** — user-configurable .wav and .ico files
@@ -62,7 +62,7 @@ MicMute is a Windows system tray utility that provides a global hotkey to toggle
 
 | File | Purpose |
 |------|---------|
-| micmute.ahk | Main application source |
+| MicMute.ahk | Main application source |
 | MicMute.ini | User settings (auto-created, gitignored) |
 | CHANGELOG.md | Full version history (v1.0.0 — v1.8.0) |
 | README.md | User-facing documentation with screenshots |

@@ -141,7 +141,7 @@ When enabled, MicMute prevents other applications from changing your mic mute st
 
 ### On-Screen Display
 
-When enabled, a floating overlay briefly appears on screen showing **MUTED** (red) or **ACTIVE** (green) whenever the mute state changes. The OSD is click-through and semi-transparent. Appears on the monitor where your mouse cursor is.
+When enabled, a floating overlay briefly appears on screen showing **MUTED** (red) or **ACTIVE** (green) whenever the mute state changes. The OSD is click-through and semi-transparent. Appears above the taskbar on the primary monitor.
 
 ### Custom Sounds
 
