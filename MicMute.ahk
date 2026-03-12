@@ -56,7 +56,7 @@ global g_unmuteSound   := ""           ; custom .wav for unmute feedback (F-04)
 global g_muteLock      := false        ; prevent external apps from changing mute state (F-11)
 global g_lockDebounce  := false        ; skip one sync cycle after enforcement (F-11)
 global g_osdEnabled    := false        ; show floating overlay on toggle (F-02)
-global g_osdDuration   := 800          ; OSD display time in ms (F-02)
+global g_osdDuration   := 1500         ; OSD display time in ms (F-02)
 global g_osdGui        := 0            ; GUI object reference for current OSD (F-02)
 global g_deafenHotkey  := ""           ; separate hotkey for deafen mode (F-20)
 global g_deafened      := false        ; true when deafened (mic + speakers muted) (F-20)
@@ -643,7 +643,7 @@ Red tray icon = mic is muted
 ─── BASIC USAGE ─────────────────────────────────
 
 • Left-click the tray icon to toggle mute.
-• Press your hotkey (default: Right-Alt + Comma) to toggle from anywhere.
+• Press your hotkey (default: Win+Shift+A) to toggle from anywhere.
 • Right-click the tray icon for the full menu (change mode, pick a mic, open settings, etc.).
 • Change your hotkey anytime via Tray → "Hotkey: ..." in the menu.
 
@@ -663,7 +663,7 @@ Deafen mutes both your microphone AND your speakers at the same time. Useful for
 
 Sound feedback: Plays a short tone when you mute or unmute. Mute plays a lower pitch (B4), unmute plays a higher pitch (A5). You can replace these with custom .wav files under Custom Files.
 
-On-screen display (OSD): Shows a small dark floating bubble in the top-right corner of your screen when you toggle mute. The Duration setting controls how long it stays visible (minimum 500 ms).
+On-screen display (OSD): Shows a small dark floating bubble above the taskbar when you toggle mute. The Duration setting controls how long it stays visible (minimum 500 ms).
 
 Mute Lock: Prevents other applications from silently unmuting or muting your mic. MicMute checks every few seconds and re-applies its own mute state if something changed it. Useful if apps like Zoom or Teams override your mute.
 

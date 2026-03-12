@@ -61,7 +61,7 @@ All notable changes to MicMute are documented here.
 ## [1.3.0] - 2026-03-08
 
 ### Added
-- **F-02**: On-screen display — floating MUTED/ACTIVE overlay on toggle, multi-monitor aware, click-through, configurable position and duration
+- **F-02**: On-screen display — floating MUTED/ACTIVE overlay on toggle, click-through, configurable position and duration
 - **F-04**: Custom sound files — replace default beep with .wav files via MuteSound/UnmuteSound config, with beep fallback
 - **F-06**: Hybrid PTT/Toggle mode — short press (<300ms) toggles, long press activates push-to-talk, eliminates mode switching
 - **F-10**: Unmute on exit — auto-unmutes mic in Cleanup() before releasing COM, prevents "dead mic" after quitting
