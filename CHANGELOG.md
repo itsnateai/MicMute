@@ -2,6 +2,14 @@
 
 All notable changes to MicMute are documented here.
 
+## [1.8.1] - 2026-03-12
+
+### Fixed
+- **Help window hotkey text** — default hotkey shown as "Right-Alt + Comma" corrected to "Win+Shift+A"
+- **OSD duration default** — initial value of `g_osdDuration` corrected from 800ms to 1500ms to match INI default, README, and Settings GUI
+- **Help text OSD position** — description updated from "top-right corner" to "above the taskbar" (accurate to actual placement)
+- **FINAL_REPORT filename casing** — corrected `micmute.ahk` reference to `MicMute.ahk`
+
 ## [1.8.0] - 2026-03-10
 
 ### Added
