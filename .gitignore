@@ -32,3 +32,4 @@ SCHEDULED_TASKS.md
 *.bak
 *.orig
 *.rej
+ASSUMPTIONS.md
