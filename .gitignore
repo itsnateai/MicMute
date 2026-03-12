@@ -19,6 +19,16 @@ SCHEDULED_TASKS.md
 
 # IDE / Editor
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
+
+# macOS
+.DS_Store
+
+# Temp / Merge artifacts
+*.tmp
+*.bak
+*.orig
+*.rej
