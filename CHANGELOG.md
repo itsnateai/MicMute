@@ -2,12 +2,21 @@
 
 All notable changes to MicMute are documented here.
 
-## [1.8.2] - 2026-03-13
+## [1.8.3] - 2026-03-13
 
 ### Fixed
-- **Header version mismatch** — file header said v1.8.0 while `g_version` was v1.8.1. Both now v1.8.2
-- **ToggleDeafen missing global** — `g_lockDebounce` was not in the `global` declaration of `ToggleDeafen()`, causing a local shadow. Mute lock debounce didn't propagate when exiting deafen mode with mute lock enabled
-- **PopulateDeviceMenu error safety** — COM device enumeration in `PopulateDeviceMenu()` now wrapped in `try` to prevent errors from silently breaking the tray notification message handler
+- **Mute lock debounce broken in SyncMuteState (P1)** — `g_lockDebounce` was not in the `global` declaration of `SyncMuteState()`, causing the mute lock debounce (infinite toggle war protection) to silently fail on every 5s sync cycle. The debounce flag was written to a local variable and discarded. Same class of AHK v2 scoping bug as below.
+- **Mute lock debounce broken in ToggleDeafen (P1)** — `g_lockDebounce` was not in the `global` declaration of `ToggleDeafen()`, causing a local shadow. Mute lock debounce didn't propagate when exiting deafen mode.
+- **Header version mismatch** — file header said v1.8.0 while `g_version` was v1.8.1. Both now v1.8.3.
+- **PopulateDeviceMenu error safety** — COM device enumeration in `PopulateDeviceMenu()` now wrapped in `try` to prevent errors from silently breaking the tray notification message handler.
+- **FixIniEncoding data loss risk** — `FileDelete` before `FileAppend` could lose INI on write failure. Now writes to temp file first, then swaps.
+- **Cleanup COM pointer not nulled** — `g_pAEV` not set to 0 after `ObjRelease` in `Cleanup()`. Defensive null for safety.
+
+### Added
+- **Explorer restart recovery** — tray icon re-registers automatically when Explorer crashes/restarts via `TaskbarCreated` window message handler. Previously the tray icon was permanently lost.
+
+### Removed
+- **Dead deprecated globals** — removed `g_ledIndicator` and `g_ledInitialState` (LED sync was removed in v1.7.0, these were unused remnants) and associated stale comments.
 
 ## [1.8.1] - 2026-03-12
 

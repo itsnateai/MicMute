@@ -1,50 +1,50 @@
-# PR Notes — Cloud Audit Pass (2026-03-13)
+# PR Notes — Cloud Deep Audit (2026-03-13)
 
-**Title:** audit: fix missing global in ToggleDeafen, version mismatch, device menu safety
+**Title:** audit: fix mute lock debounce, Explorer recovery, INI safety, dead code — v1.8.3
 
 ## Summary
-- Fixed `g_lockDebounce` missing from `ToggleDeafen()` global declaration — AHK v2 scoping bug caused local shadow, mute lock debounce didn't propagate when exiting deafen mode
-- Fixed header version mismatch (1.8.0 vs 1.8.1) — both now 1.8.2
-- Wrapped `PopulateDeviceMenu()` in try/catch to prevent COM errors from breaking tray notification handler
+Deep audit of MicMute found the mute lock debounce mechanism was completely broken (AHK v2 global scoping bugs in two functions), tray icon was permanently lost on Explorer restart, INI re-encoding could lose data, and deprecated globals were dead code. All fixed. Version bumped to 1.8.3.
 
 ## Findings by Priority
 
 ### P1 (Important) — Fixed
-- **ToggleDeafen missing global**: `g_lockDebounce` not in global declaration (line 545). When exiting deafen mode with mute lock enabled, the debounce flag was set on a local variable instead of the global, potentially allowing the next sync cycle to fight the un-deafen. Classic AHK v2 scoping gotcha.
-- **Header version stale**: File header said v1.8.0, `g_version` said v1.8.1. Now both say v1.8.2.
+- **SyncMuteState missing g_lockDebounce global**: The 5s sync timer that enforces mute lock was creating a local `g_lockDebounce` every call. The infinite toggle war debounce protection has NEVER worked since it was implemented — the flag was set on a local, lost on return, and read as empty/false on next call.
+- **ToggleDeafen missing g_lockDebounce global**: Same bug — debounce flag set on local variable when exiting deafen mode.
+- **Header version stale**: Said v1.8.0, code said v1.8.1.
 
 ### P2 (Moderate) — Fixed
-- **PopulateDeviceMenu unguarded**: COM device enumeration called from `OnTrayNotify` message handler without try/catch. A COM error during enumeration could throw and silently break message handling.
+- **No Explorer restart recovery**: Tray icon permanently lost when Explorer crashes/restarts. Added `TaskbarCreated` message handler to re-register icon.
+- **FixIniEncoding delete-before-write**: `FileDelete` then `FileAppend` could lose INI if write fails. Now writes to temp file first, then swaps.
+- **PopulateDeviceMenu unguarded**: COM enumeration in OnMessage handler not wrapped in try/catch.
+- **Cleanup COM pointer not nulled**: `g_pAEV` not set to 0 after `ObjRelease`.
 
-### P2 (Moderate) — Logged only
-- No Explorer restart recovery (no `TaskbarCreated` message handler) — feature addition, not bug fix
-- `FixIniEncoding()` delete-before-write pattern risks data loss — low probability, safe defaults mitigate
-- Version tag v1.8.2 existed on finalization commit with no code changes — resolved by bumping code to v1.8.2
-
-### P3 — Logged only
-- `Cleanup()` doesn't null `g_pAEV` after `ObjRelease` — trivial, OnExit fires once
+### Cleanup
+- Removed `g_ledIndicator` and `g_ledInitialState` — deprecated dead globals (LED sync removed in v1.7.0)
+- Removed stale LED-related comments in LoadConfig/SaveConfig
 
 ### Assumptions Made
-- [ASSUMPTION: v1.8.2 version bump] The git tag v1.8.2 already existed on the finalization commit (no code changes). I bumped the code version to 1.8.2 to include the actual fixes. Nate may want to re-tag v1.8.2 to point at this commit instead.
+- **Version 1.8.3**: Bumped past v1.8.2 since that git tag already exists on the finalization commit (no code changes). v1.8.3 contains all actual fixes.
 
 ## Files Changed
-- `MicMute.ahk` — fixed header version, g_version, added g_lockDebounce to ToggleDeafen global, wrapped PopulateDeviceMenu in try
-- `CHANGELOG.md` — added v1.8.2 entry
-- `CLAUDE.md` — updated status to v1.8.2
+- `MicMute.ahk` — all fixes above (6 code fixes + 1 feature + dead code removal)
+- `CHANGELOG.md` — added v1.8.3 entry with full details
+- `CLAUDE.md` — updated status to v1.8.3
+- `PR_NOTES.md` — this file
 
 ## Verification
-- Re-read all modified lines after each edit to verify correctness
-- Needs compile verification by Asus (no AHK compiler available in Cloud)
+- Re-read all modified sections after each edit
+- Traced every function's global declarations against variable usage
+- **Needs compile verification by Asus** (no AHK compiler in Cloud)
 
 ## Checklist
-- [x] Read every source file (MicMute.ahk — all 1310 lines, plus all .md files, .gitignore, LICENSE)
-- [x] Version strings verified consistent (now all 1.8.2)
+- [x] Read every source file (MicMute.ahk — all 1310 lines, all .md, .gitignore, LICENSE)
+- [x] Version strings verified consistent (now all 1.8.3)
 - [x] Resource lifecycle traced for every COM handle/Buffer/GUI object
-- [x] Long-running health checked (timer paths, polling loops — no Buffer allocations in hot paths)
-- [x] No secrets in code or git history (checked with git log -S)
-- [x] All imports/dependencies verified (COM GUIDs match Windows SDK)
+- [x] Long-running health checked (timer paths, polling loops)
+- [x] Global scoping audited for EVERY function (30+ functions checked)
+- [x] No secrets in code or git history
+- [x] All COM GUIDs verified against Windows SDK
 - [x] CHANGELOG.md updated
-- [x] AUDIT_TASKS.md created with P3-P4 findings (gitignored, stays local)
-- [x] CLAUDE.md updated with new version
+- [x] CLAUDE.md updated
 
-Generated by Claude Code Cloud — Audit Pass
+Generated by Claude Code Cloud — Deep Audit Pass
