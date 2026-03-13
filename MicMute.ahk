@@ -1,6 +1,6 @@
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  MicMute.ahk  —  Global microphone mute toggle                         ║
-; ║  Version: 1.8.0                                                         ║
+; ║  Version: 1.8.2                                                         ║
 ; ║  Requires: AutoHotKey v2  (https://www.autohotkey.com/)                ║
 ; ║                                                                          ║
 ; ║  • Left-click  tray icon  → toggle mute                                 ║
@@ -35,7 +35,7 @@ Persistent
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
-global g_version := "1.8.1"
+global g_version := "1.8.2"
 
 ;  Defaults — overridden by MicMute.ini if present.
 ;  Change g_hotkey to whatever combo you prefer.
@@ -1214,12 +1214,17 @@ HotkeyToReadable(hk) {
 ; If silent=true, suppresses ToolTip notifications (used by periodic auto-detect).
 InitMicEndpoint(silent := false) {
     global g_deviceId
-    CLSID_MMEnum := Buffer(16)
-    IID_MMEnum   := Buffer(16)
-    IID_AEV      := Buffer(16)
-    DllCall("ole32\CLSIDFromString", "WStr", "{BCDE0395-E52F-467C-8E3D-C4579291692E}", "Ptr", CLSID_MMEnum)
-    DllCall("ole32\CLSIDFromString", "WStr", "{A95664D2-9614-4F35-A746-DE8DB63617E6}", "Ptr", IID_MMEnum)
-    DllCall("ole32\CLSIDFromString", "WStr", "{5CDF2C82-841E-4546-9722-0CF74078229A}", "Ptr", IID_AEV)
+    ; Static GUID buffers — avoid re-allocating on every call (hot path in degraded mode)
+    static CLSID_MMEnum := 0, IID_MMEnum := 0, IID_AEV := 0, _guidsInit := false
+    if !_guidsInit {
+        CLSID_MMEnum := Buffer(16)
+        IID_MMEnum   := Buffer(16)
+        IID_AEV      := Buffer(16)
+        DllCall("ole32\CLSIDFromString", "WStr", "{BCDE0395-E52F-467C-8E3D-C4579291692E}", "Ptr", CLSID_MMEnum)
+        DllCall("ole32\CLSIDFromString", "WStr", "{A95664D2-9614-4F35-A746-DE8DB63617E6}", "Ptr", IID_MMEnum)
+        DllCall("ole32\CLSIDFromString", "WStr", "{5CDF2C82-841E-4546-9722-0CF74078229A}", "Ptr", IID_AEV)
+        _guidsInit := true
+    }
 
     hr := DllCall("ole32\CoCreateInstance",
         "Ptr",  CLSID_MMEnum,
