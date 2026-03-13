@@ -42,7 +42,7 @@ MSYS_NO_PATHCONV=1 "X:/_Projects/_tools/Ahk/Ahk2Exe.exe" /in MicMute.ahk /out Mi
 
 ## Known Patterns & Gotchas
 
-- **AHK v2 global scoping:** Nested functions need explicit `global` declarations. Bare `global` at function top works, or list each variable. Silently fails without it (local shadow).
+- **AHK v2 global scoping (CRITICAL — audit trap):** Functions that ASSIGN to a global variable MUST declare it with `global`. Reading a global without declaring it works fine (resolves to the global). But the moment you ASSIGN to it (`g_foo := value`), AHK v2 silently creates a local shadow — no error, no warning, the global is never touched. **This bug survived 6 audits by 3 different Claudes.** The mute lock debounce (`g_lockDebounce`) was broken in BOTH `SyncMuteState()` and `ToggleDeafen()` — the feature never actually worked since implementation. **Audit procedure:** For every function, grep for every `g_` variable that appears on the LEFT side of `:=`. Verify each one is in that function's `global` declaration. Read-only access (right side of `:=`, `if` conditions) does NOT need a declaration and won't create a shadow.
 - **COM HRESULT checking:** Always check return from GetMute/SetMute — stale device handles silently return incorrect state.
 - **Mouse hooks overhead:** System-wide mouse hook for scroll events adds ~0.5% idle CPU. Use tray notification callbacks instead.
 - **Hotkey GUI control:** AHK's Hotkey control can't represent bare keys like `\` or `]`. Returns empty `.Value` in those cases — preserve the old binding when empty.
