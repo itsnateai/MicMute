@@ -7,6 +7,7 @@ All notable changes to MicMute are documented here.
 ### Fixed
 - **Header version mismatch** — file header comment said "Version: 1.8.0" while `g_version` was "1.8.1". Both now read "1.8.2".
 - **Hot-path allocation in `InitMicEndpoint`** — three `Buffer(16)` GUID allocations occurred on every call. In degraded mode (no mic), this function runs every 5 seconds via `SyncMuteState`, leaking 48 bytes/cycle. GUID buffers are now `static` and initialized once.
+- **Repeated allocation in `EnumCaptureDevices`** — GUID and PKEY buffers (3× `Buffer(16)` + 1× `Buffer(20)`) allocated on every call. Now `static` with one-time init.
 
 ## [1.8.1] - 2026-03-12
 

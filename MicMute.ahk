@@ -933,10 +933,18 @@ ApplySettingsGUI(dlg, close := true) {
 ; Enumerate capture devices and return an array of {name, id} objects.
 EnumCaptureDevices() {
     devices := []
-    CLSID_MMEnum := Buffer(16)
-    IID_MMEnum   := Buffer(16)
-    DllCall("ole32\CLSIDFromString", "WStr", "{BCDE0395-E52F-467C-8E3D-C4579291692E}", "Ptr", CLSID_MMEnum)
-    DllCall("ole32\CLSIDFromString", "WStr", "{A95664D2-9614-4F35-A746-DE8DB63617E6}", "Ptr", IID_MMEnum)
+    ; Static GUID/PKEY buffers — allocated once across calls
+    static CLSID_MMEnum := 0, IID_MMEnum := 0, PKEY := 0, _guidsInit := false
+    if !_guidsInit {
+        CLSID_MMEnum := Buffer(16)
+        IID_MMEnum   := Buffer(16)
+        PKEY         := Buffer(20, 0)
+        DllCall("ole32\CLSIDFromString", "WStr", "{BCDE0395-E52F-467C-8E3D-C4579291692E}", "Ptr", CLSID_MMEnum)
+        DllCall("ole32\CLSIDFromString", "WStr", "{A95664D2-9614-4F35-A746-DE8DB63617E6}", "Ptr", IID_MMEnum)
+        DllCall("ole32\CLSIDFromString", "WStr", "{A45C254E-DF1C-4EFD-8020-67D146A850E0}", "Ptr", PKEY)
+        NumPut("UInt", 14, PKEY, 16)
+        _guidsInit := true
+    }
 
     hr := DllCall("ole32\CoCreateInstance",
         "Ptr",  CLSID_MMEnum,
@@ -960,11 +968,6 @@ EnumCaptureDevices() {
         ObjRelease(pCollection)
         return devices
     }
-
-    ; PKEY_Device_FriendlyName: {A45C254E-DF1C-4EFD-8020-67D146A850E0}, pid 14
-    PKEY := Buffer(20, 0)
-    DllCall("ole32\CLSIDFromString", "WStr", "{A45C254E-DF1C-4EFD-8020-67D146A850E0}", "Ptr", PKEY)
-    NumPut("UInt", 14, PKEY, 16)
 
     loop count {
         idx := A_Index - 1
