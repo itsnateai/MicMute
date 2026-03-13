@@ -2,6 +2,13 @@
 
 All notable changes to MicMute are documented here.
 
+## [1.8.2] - 2026-03-13
+
+### Fixed
+- **Header version mismatch** — file header said v1.8.0 while `g_version` was v1.8.1. Both now v1.8.2
+- **ToggleDeafen missing global** — `g_lockDebounce` was not in the `global` declaration of `ToggleDeafen()`, causing a local shadow. Mute lock debounce didn't propagate when exiting deafen mode with mute lock enabled
+- **PopulateDeviceMenu error safety** — COM device enumeration in `PopulateDeviceMenu()` now wrapped in `try` to prevent errors from silently breaking the tray notification message handler
+
 ## [1.8.1] - 2026-03-12
 
 ### Fixed

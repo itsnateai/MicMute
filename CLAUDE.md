@@ -51,7 +51,7 @@ MSYS_NO_PATHCONV=1 "X:/_Projects/_tools/Ahk/Ahk2Exe.exe" /in MicMute.ahk /out Mi
 
 ## Status
 
-**v1.8.1 — Final release (shipped 2026-03-12)**
+**v1.8.2 — Audit fix release (2026-03-13)**
 
-All audit items resolved. Tracking files cleared. See FINAL_REPORT.md for summary.
+Post-release audit found missing global declaration in ToggleDeafen (mute lock debounce bug) and version string mismatch. See CHANGELOG.md for details.
 This project is public open source. No further active development planned.

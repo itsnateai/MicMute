@@ -1,6 +1,6 @@
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  MicMute.ahk  —  Global microphone mute toggle                         ║
-; ║  Version: 1.8.0                                                         ║
+; ║  Version: 1.8.2                                                         ║
 ; ║  Requires: AutoHotKey v2  (https://www.autohotkey.com/)                ║
 ; ║                                                                          ║
 ; ║  • Left-click  tray icon  → toggle mute                                 ║
@@ -35,7 +35,7 @@ Persistent
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
-global g_version := "1.8.1"
+global g_version := "1.8.2"
 
 ;  Defaults — overridden by MicMute.ini if present.
 ;  Change g_hotkey to whatever combo you prefer.
@@ -542,7 +542,7 @@ RegisterDeafenHotkey() {
 }
 
 ToggleDeafen() {
-    global g_pAEV, g_muted, g_deafened, g_speakerWasMuted
+    global g_pAEV, g_muted, g_deafened, g_speakerWasMuted, g_lockDebounce
     if !g_pAEV
         return
     if !g_deafened {
@@ -1283,7 +1283,7 @@ OnTrayNotify(wParam, lParam, msg, hwnd) {
     event := lParam & 0xFFFF
     if (event = 0x205) {   ; WM_RBUTTONUP — context menu about to open
         if !g_devMenuPopulated
-            PopulateDeviceMenu()
+            try PopulateDeviceMenu()
     }
     if (event = 0x208) {   ; WM_MBUTTONUP — middle-click to toggle mode
         if g_middleClickToggle
