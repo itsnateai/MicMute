@@ -1,6 +1,6 @@
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  MicMute.ahk  —  Global microphone mute toggle                         ║
-; ║  Version: 1.8.2                                                         ║
+; ║  Version: 1.8.3                                                         ║
 ; ║  Requires: AutoHotKey v2  (https://www.autohotkey.com/)                ║
 ; ║                                                                          ║
 ; ║  • Left-click  tray icon  → toggle mute                                 ║
@@ -35,7 +35,7 @@ Persistent
 
 ; ── CONFIGURATION ────────────────────────────────────────────────────────────
 ;  Version string displayed in tray menu and tooltip.
-global g_version := "1.8.2"
+global g_version := "1.8.3"
 
 ;  Defaults — overridden by MicMute.ini if present.
 ;  Change g_hotkey to whatever combo you prefer.
@@ -50,7 +50,6 @@ global g_mode          := "toggle"     ; "toggle", "push-to-talk"
 global g_deviceId      := ""           ; empty = system default
 global g_iconMuted     := ""           ; custom .ico path for muted state (F-17)
 global g_iconActive    := ""           ; custom .ico path for active state (F-17)
-global g_ledIndicator  := ""           ; DEPRECATED: LED sync removed (was F-16, interfered with actual key function)
 global g_muteSound     := ""           ; custom .wav for mute feedback (F-04)
 global g_unmuteSound   := ""           ; custom .wav for unmute feedback (F-04)
 global g_muteLock      := false        ; prevent external apps from changing mute state (F-11)
@@ -60,15 +59,12 @@ global g_osdDuration   := 1500         ; OSD display time in ms (F-02)
 global g_osdGui        := 0            ; GUI object reference for current OSD (F-02)
 global g_deafenHotkey  := ""           ; separate hotkey for deafen mode (F-20)
 global g_deafened      := false        ; true when deafened (mic + speakers muted) (F-20)
-global g_ledInitialState := false      ; DEPRECATED: kept for INI compat
 global g_speakerWasMuted := false      ; remember speaker state before deafen (F-20)
 global g_startMuted     := "no"        ; startup mute: "no", "yes", "unmuted", "last" (F-14)
 global g_middleClickToggle := true     ; middle-click tray icon to toggle between Toggle/PTT modes
 
 ; Load overrides from INI (if it exists)
 LoadConfig()
-
-; LED sync removed (F-16) — was unreliable and interfered with actual key function
 
 ; ── AUDIO SETUP ──────────────────────────────────────────────────────────────
 ; Uses Windows Core Audio (IAudioEndpointVolume) via proper CoCreateInstance.
@@ -147,6 +143,13 @@ SetTimer(SyncMuteState, 5000)
 ; ── TRAY NOTIFICATION HANDLER ────────────────────────────────────────────
 ; Handle middle-click (mode toggle) and right-click (device menu) on tray icon.
 OnMessage(0x404, OnTrayNotify)
+
+; ── EXPLORER RESTART RECOVERY ──────────────────────────────────────────────
+; When Explorer crashes/restarts, all tray icons are lost. Windows broadcasts
+; the registered "TaskbarCreated" message when the taskbar is rebuilt.
+; Re-apply our tray icon so MicMute doesn't go invisible.
+global g_WM_TASKBARCREATED := DllCall("RegisterWindowMessage", "Str", "TaskbarCreated", "UInt")
+OnMessage(g_WM_TASKBARCREATED, OnTaskbarCreated)
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
 ; ║  Core functions                                                          ║
@@ -373,7 +376,7 @@ FlashTick() {
 ; state has changed externally (e.g. via Windows Sound Settings).
 ; Handles device hotplug (P1-01) and external mute sync (P1-02).
 SyncMuteState() {
-    global g_pAEV, g_muted
+    global g_pAEV, g_muted, g_lockDebounce, g_muteLock
     if !g_pAEV {
         ; No mic currently — try to find one that may have been plugged in
         g_pAEV := InitMicEndpoint(true)   ; silent mode — no ToolTip
@@ -542,7 +545,7 @@ RegisterDeafenHotkey() {
 }
 
 ToggleDeafen() {
-    global g_pAEV, g_muted, g_deafened, g_speakerWasMuted
+    global g_pAEV, g_muted, g_deafened, g_speakerWasMuted, g_lockDebounce
     if !g_pAEV
         return
     if !g_deafened {
@@ -1126,9 +1129,12 @@ FixIniEncoding() {
         if (b1 = 0xFF && b2 = 0xFE) || (b2 != 0x00)
             return
         ; UTF-16 LE without BOM — read as UTF-16 and rewrite as UTF-8
+        ; Write to temp file first, then rename — prevents data loss if write fails
         content := FileRead(ini, "UTF-16-RAW")
+        tmpFile := ini ".tmp"
+        FileAppend(content, tmpFile, "CP0")
         FileDelete(ini)
-        FileAppend(content, ini, "CP0")
+        FileMove(tmpFile, ini)
     }
 }
 
@@ -1145,7 +1151,6 @@ LoadConfig() {
     g_deviceId      := Trim(IniRead(ini, "General", "DeviceId", ""))
     g_iconMuted     := Trim(IniRead(ini, "General", "IconMuted", ""))
     g_iconActive    := Trim(IniRead(ini, "General", "IconActive", ""))
-    ; g_ledIndicator removed (F-16 deprecated)
     g_muteLock      := (Trim(IniRead(ini, "General", "MuteLock", "0")) = "1")
     g_muteSound     := Trim(IniRead(ini, "General", "MuteSound", ""))
     g_unmuteSound   := Trim(IniRead(ini, "General", "UnmuteSound", ""))
@@ -1175,7 +1180,6 @@ SaveConfig() {
     IniWrite(g_deviceId, ini, "General", "DeviceId")
     IniWrite(g_iconMuted, ini, "General", "IconMuted")
     IniWrite(g_iconActive, ini, "General", "IconActive")
-    ; LEDIndicator removed (F-16 deprecated)
     IniWrite(g_osdEnabled ? "1" : "0", ini, "General", "OSD_Enabled")
     IniWrite(g_osdDuration, ini, "General", "OSD_Duration")
     IniWrite(g_muteLock ? "1" : "0", ini, "General", "MuteLock")
@@ -1291,13 +1295,18 @@ OnTrayNotify(wParam, lParam, msg, hwnd) {
     event := lParam & 0xFFFF
     if (event = 0x205) {   ; WM_RBUTTONUP — context menu about to open
         if !g_devMenuPopulated
-            PopulateDeviceMenu()
+            try PopulateDeviceMenu()
     }
     if (event = 0x208) {   ; WM_MBUTTONUP — middle-click to toggle mode
         if g_middleClickToggle
             SetMode((g_mode = "toggle") ? "push-to-talk" : "toggle")
     }
     ; Return nothing — let AHK's default tray handler process the event
+}
+
+; Re-register tray icon after Explorer restart.
+OnTaskbarCreated(*) {
+    SetTrayIcon()
 }
 
 ; Release COM handle and clean up on exit.
@@ -1312,6 +1321,7 @@ Cleanup(*) {
         if g_muted
             try ComCall(14, g_pAEV, "Int", false, "Ptr", 0, "Int")   ; SetMute(false)
         ObjRelease(g_pAEV)
+        g_pAEV := 0
     }
 }
 
