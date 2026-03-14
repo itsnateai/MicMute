@@ -708,6 +708,7 @@ You can also use Tray → "Reinit Mic" to manually force a reconnect.
     hlp.OnEvent("Size", HelpResize)
     g_helpGui := hlp
     hlp.Show("w460 h420")
+    SendMessage(0xB1, 0, 0, hlp["Edit1"])  ; EM_SETSEL — deselect all text
 }
 
 HelpResize(hlp, minMax, w, h) {
