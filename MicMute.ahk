@@ -1002,9 +1002,9 @@ EnumCaptureDevices() {
                     if pStr
                         friendlyName := StrGet(pStr, "UTF-16")
                 }
-                ; PropVariantClear
-                DllCall("ole32\PropVariantClear", "Ptr", pv)
             }
+            ; Always clear PROPVARIANT — safe even on VT_EMPTY (zero-init)
+            DllCall("ole32\PropVariantClear", "Ptr", pv)
             ObjRelease(pStore)
         }
 
@@ -1121,8 +1121,12 @@ FixIniEncoding() {
         return
     try {
         f := FileOpen(ini, "r", "RAW")
-        if !f || f.Length < 4
+        if !f
             return
+        if f.Length < 4 {
+            f.Close()
+            return
+        }
         b1 := f.ReadUChar()
         b2 := f.ReadUChar()
         f.Close()
@@ -1134,8 +1138,9 @@ FixIniEncoding() {
         content := FileRead(ini, "UTF-16-RAW")
         tmpFile := ini ".tmp"
         FileAppend(content, tmpFile, "CP0")
-        FileDelete(ini)
-        FileMove(tmpFile, ini)
+        ; Use FileMove with overwrite flag to atomically replace — avoids
+        ; the window between FileDelete and FileMove where the INI is gone.
+        FileMove(tmpFile, ini, true)
     }
 }
 
@@ -1314,6 +1319,27 @@ OnTaskbarCreated(*) {
 Cleanup(*) {
     global g_pAEV, g_muted
     global g_deafened, g_speakerWasMuted
+    global g_osdGui, g_settingsGui, g_helpGui
+
+    ; ── Stop all timers FIRST to prevent use-after-free on COM pointers ──
+    SetTimer(SyncMuteState, 0)
+    SetTimer(FlashTick, 0)
+    SetTimer(DismissOSD, 0)
+
+    ; ── Destroy any open GUI windows ──
+    if g_osdGui {
+        try g_osdGui.Destroy()
+        g_osdGui := 0
+    }
+    if g_settingsGui {
+        try g_settingsGui.Destroy()
+        g_settingsGui := 0
+    }
+    if g_helpGui {
+        try g_helpGui.Destroy()
+        g_helpGui := 0
+    }
+
     ; Restore speaker state if deafened (F-20)
     if g_deafened
         try SoundSetMute(g_speakerWasMuted)
