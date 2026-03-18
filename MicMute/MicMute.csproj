@@ -4,8 +4,9 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>..\mic_on.ico</ApplicationIcon>
-    <Version>1.8.3</Version>
+    <Version>2.0.0</Version>
     <AssemblyName>MicMute</AssemblyName>
     <RootNamespace>MicMute</RootNamespace>
     <Nullable>disable</Nullable>
