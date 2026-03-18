@@ -63,6 +63,23 @@ global g_speakerWasMuted := false      ; remember speaker state before deafen (F
 global g_startMuted     := "no"        ; startup mute: "no", "yes", "unmuted", "last" (F-14)
 global g_middleClickToggle := true     ; middle-click tray icon to toggle between Toggle/PTT modes
 
+; ── CACHED CLOSURES (avoid repeated allocation on hot paths) ─────────────
+; A single shared closure for ToolTip dismissal — used ~18 places.
+global g_dismissTooltip := () => ToolTip()
+; Cached callbacks for tray menu items — rebuilt by BuildTrayMenu() but the
+; underlying function references are allocated once here, not per-call.
+global g_fnToggleMute     := (*) => ToggleMute()
+global g_fnShowHotkeyDlg  := (*) => ShowHotkeyDialog()
+global g_fnSetModeToggle  := (*) => SetMode("toggle")
+global g_fnSetModePTT     := (*) => SetMode("push-to-talk")
+global g_fnShowSettings   := (*) => ShowSettingsGUI()
+global g_fnReinitMic      := (*) => ReinitMic()
+global g_fnOpenSndSettings := (*) => Run("ms-settings:sound")
+global g_fnExit           := (*) => ExitApp()
+global g_fnDevMenuStub    := (*) => 0
+global g_devMenu          := 0           ; device submenu — created once by BuildTrayMenu()
+global g_devMenuPopulated := false       ; true after lazy-load populates it
+
 ; Load overrides from INI (if it exists)
 LoadConfig()
 
@@ -131,7 +148,7 @@ SetTimer(SyncTray, -150)
 ; Show a brief tooltip if no mic was found so the user knows what's up
 if !g_pAEV {
     ToolTip("No microphone detected.`nPlug one in — MicMute will auto-detect it.")
-    SetTimer(() => ToolTip(), -5000)
+    SetTimer(g_dismissTooltip, -5000)
 }
 
 ; ── PERIODIC SYNC ────────────────────────────────────────────────────────────
@@ -159,14 +176,14 @@ ToggleMute() {
     global g_muted, g_pAEV, g_soundFeedback
     if !g_pAEV {
         ToolTip("No microphone available.`nTry Tray → Reinitialise Mic.")
-        SetTimer(() => ToolTip(), -5000)
+        SetTimer(g_dismissTooltip, -5000)
         return
     }
     newState := !g_muted
     hr := ComCall(14, g_pAEV, "Int", newState, "Ptr", 0, "Int")   ; SetMute
     if (hr < 0) {
         ToolTip("SetMute failed (0x" Format("{:08X}", hr & 0xFFFFFFFF) ").`nDevice may have changed — try Reinitialise Mic.")
-        SetTimer(() => ToolTip(), -5000)
+        SetTimer(g_dismissTooltip, -5000)
         return
     }
     g_muted := newState
@@ -384,7 +401,7 @@ SyncMuteState() {
             return
         ; New device found — read its mute state
         ToolTip("Microphone detected — auto-connected.")
-        SetTimer(() => ToolTip(), -3000)
+        SetTimer(g_dismissTooltip, -3000)
         hr := ComCall(15, g_pAEV, "Int*", &_initMuted := 0, "Int")
         g_muted := (hr = 0 && _initMuted != 0)
         SyncTray()
@@ -403,7 +420,7 @@ SyncMuteState() {
         g_muted := false
         SyncTray()
         ToolTip("Microphone disconnected.`nWill auto-reconnect when available.")
-        SetTimer(() => ToolTip(), -5000)
+        SetTimer(g_dismissTooltip, -5000)
         return
     }
     ; Sync tray if an external app changed the mute state
@@ -442,7 +459,7 @@ ReinitMic() {
     g_muted := (hr = 0 && _muted != 0)
     SyncTray()
     ToolTip("Microphone reinitialised.")
-    SetTimer(() => ToolTip(), -3000)
+    SetTimer(g_dismissTooltip, -3000)
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -462,17 +479,16 @@ RegisterHotkey() {
     ; Register with new callback — Hotkey() replaces the callback even if key
     ; was already registered.  No need to Off/On cycle the same key, which can
     ; confuse AHK's internal hotkey state on mode switches (PTT→Toggle bug).
+    ; Use cached closures to avoid allocating new ones on every mode switch
+    static fnPTT := (*) => PushToTalk()
+    static fnToggle := (*) => ToggleMute()
     try {
-        if (g_mode = "push-to-talk") {
-            Hotkey(g_hotkey, (*) => PushToTalk(), "On")
-        } else {
-            Hotkey(g_hotkey, (*) => ToggleMute(), "On")
-        }
+        Hotkey(g_hotkey, (g_mode = "push-to-talk") ? fnPTT : fnToggle, "On")
         prevHotkey := g_hotkey
     } catch as e {
         prevHotkey := ""
         ToolTip("Invalid hotkey: " g_hotkey "`nFalling back to tray-only mode.")
-        SetTimer(() => ToolTip(), -5000)
+        SetTimer(g_dismissTooltip, -5000)
     }
 }
 
@@ -513,7 +529,7 @@ SetMode(newMode) {
     if g_soundFeedback
         PlayModeChirp(newMode)
     ToolTip("Mode: " FormatModeName(newMode))
-    SetTimer(() => ToolTip(), -3000)
+    SetTimer(g_dismissTooltip, -3000)
 }
 
 ; Single-tone mode switch feedback — distinct from mute/unmute beeps.
@@ -536,11 +552,12 @@ RegisterDeafenHotkey() {
     global g_deafenHotkey
     if (g_deafenHotkey = "")
         return
+    static fnDeafen := (*) => ToggleDeafen()
     try {
-        Hotkey(g_deafenHotkey, (*) => ToggleDeafen())
+        Hotkey(g_deafenHotkey, fnDeafen)
     } catch as e {
         ToolTip("Invalid deafen hotkey: " g_deafenHotkey)
-        SetTimer(() => ToolTip(), -5000)
+        SetTimer(g_dismissTooltip, -5000)
     }
 }
 
@@ -569,7 +586,7 @@ ToggleDeafen() {
         SetTrayIcon()        ; update tooltip suffix
         ToolTip("Undeafened — audio restored")
     }
-    SetTimer(() => ToolTip(), -3000)
+    SetTimer(g_dismissTooltip, -3000)
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -603,7 +620,7 @@ ApplyNewHotkey(dlg, hkCtrl, txtCtrl) {
     newHK := (rawHK != "") ? rawHK : hkCtrl.Value
     if (newHK = "") {
         ToolTip("No hotkey entered. Keeping current hotkey.")
-        SetTimer(() => ToolTip(), -5000)
+        SetTimer(g_dismissTooltip, -5000)
         return
     }
     g_hotkey := newHK
@@ -612,7 +629,7 @@ ApplyNewHotkey(dlg, hkCtrl, txtCtrl) {
     SaveConfig()
     dlg.Destroy()
     ToolTip("Hotkey changed to: " HotkeyToReadable(g_hotkey))
-    SetTimer(() => ToolTip(), -3000)
+    SetTimer(g_dismissTooltip, -3000)
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -634,7 +651,7 @@ ShowHelpWindow() {
     hlp.BackColor := "FFFFFF"
     hlp.SetFont("s9", "Segoe UI")
 
-    helpText := "
+    static helpText := "
     (
 MICMUTE — Global Microphone Mute Toggle
 
@@ -921,10 +938,10 @@ ApplySettingsGUI(dlg, close := true) {
         dlg.Destroy()
         g_settingsGui := 0
         ToolTip("Settings saved.")
-        SetTimer(() => ToolTip(), -3000)
+        SetTimer(g_dismissTooltip, -3000)
     } else {
         ToolTip("Settings applied.")
-        SetTimer(() => ToolTip(), -2000)
+        SetTimer(g_dismissTooltip, -2000)
     }
 }
 
@@ -1044,7 +1061,7 @@ SelectDevice(deviceId, *) {
         ToolTip("Using system default microphone.")
     else
         ToolTip("Switched microphone.")
-    SetTimer(() => ToolTip(), -3000)
+    SetTimer(g_dismissTooltip, -3000)
 }
 
 ; ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1052,21 +1069,26 @@ SelectDevice(deviceId, *) {
 ; ╚══════════════════════════════════════════════════════════════════════════╝
 
 BuildTrayMenu() {
-    global g_hotkey, g_version, g_soundFeedback, g_mode, g_deviceId
+    global
     hotkeyLabel := "Hotkey: " HotkeyToReadable(g_hotkey)
 
     A_TrayMenu.Delete()
     titleItem := "Toggle Mute — v" g_version
-    A_TrayMenu.Add(titleItem,            (*) => ToggleMute())
+    A_TrayMenu.Add(titleItem,            g_fnToggleMute)
     A_TrayMenu.Default := titleItem       ; bold text — marks it as the primary action
     A_TrayMenu.Add()
     hotkeyItem := "Hotkey: " HotkeyToReadable(g_hotkey)
-    A_TrayMenu.Add(hotkeyItem,          (*) => ShowHotkeyDialog())
+    A_TrayMenu.Add(hotkeyItem,          g_fnShowHotkeyDlg)
 
     ; ── Mode submenu (P2-01) ──
-    modeMenu := Menu()
-    modeMenu.Add("Toggle",              (*) => SetMode("toggle"))
-    modeMenu.Add("Push-to-Talk",        (*) => SetMode("push-to-talk"))
+    ; Reuse persistent Menu object — avoids allocating a new one per rebuild
+    static modeMenu := 0
+    if !modeMenu
+        modeMenu := Menu()
+    else
+        modeMenu.Delete()
+    modeMenu.Add("Toggle",              g_fnSetModeToggle)
+    modeMenu.Add("Push-to-Talk",        g_fnSetModePTT)
     if (g_mode = "push-to-talk")
         modeMenu.Check("Push-to-Talk")
     else
@@ -1075,19 +1097,23 @@ BuildTrayMenu() {
     A_TrayMenu.Add(modeLabel, modeMenu)
 
     ; ── Device submenu (P2-02) — lazy-loaded on first open ──
-    global g_devMenu := Menu()
-    g_devMenu.Add("Loading…", (*) => 0)
+    ; Reuse persistent Menu object
+    if !g_devMenu
+        g_devMenu := Menu()
+    else
+        g_devMenu.Delete()
+    g_devMenu.Add("Loading…", g_fnDevMenuStub)
     g_devMenu.Disable("Loading…")
     A_TrayMenu.Add("Mic Source", g_devMenu)
-    global g_devMenuPopulated := false
+    g_devMenuPopulated := false
 
     A_TrayMenu.Add()
-    A_TrayMenu.Add("Settings…",     (*) => ShowSettingsGUI())
+    A_TrayMenu.Add("Settings…",     g_fnShowSettings)
     A_TrayMenu.Add()
-    A_TrayMenu.Add("Reinit Mic",    (*) => ReinitMic())
-    A_TrayMenu.Add("Sound Settings", (*) => Run("ms-settings:sound"))
+    A_TrayMenu.Add("Reinit Mic",    g_fnReinitMic)
+    A_TrayMenu.Add("Sound Settings", g_fnOpenSndSettings)
     A_TrayMenu.Add()
-    A_TrayMenu.Add("Exit",          (*) => ExitApp())
+    A_TrayMenu.Add("Exit",          g_fnExit)
     A_TrayMenu.Default    := titleItem
     A_TrayMenu.ClickCount := 1           ; single left-click fires default item
 }
@@ -1252,7 +1278,7 @@ InitMicEndpoint(silent := false) {
     if (hr < 0 || !pEnum) {
         if !silent {
             ToolTip("Audio init failed (0x" Format("{:08X}", hr & 0xFFFFFFFF) ").`nUse Tray → Reinitialise Mic.")
-            SetTimer(() => ToolTip(), -5000)
+            SetTimer(g_dismissTooltip, -5000)
         }
         return 0
     }
@@ -1275,7 +1301,7 @@ InitMicEndpoint(silent := false) {
     if (hr < 0 || !pDev) {
         if !silent {
             ToolTip("No microphone found.`nConnect one and use Tray → Reinitialise Mic.")
-            SetTimer(() => ToolTip(), -5000)
+            SetTimer(g_dismissTooltip, -5000)
         }
         return 0
     }
@@ -1286,7 +1312,7 @@ InitMicEndpoint(silent := false) {
     if (hr < 0 || !pAEV) {
         if !silent {
             ToolTip("Mic activation failed (0x" Format("{:08X}", hr & 0xFFFFFFFF) ").`nUse Tray → Reinitialise Mic.")
-            SetTimer(() => ToolTip(), -5000)
+            SetTimer(g_dismissTooltip, -5000)
         }
         return 0
     }
