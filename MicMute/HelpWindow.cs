@@ -7,6 +7,7 @@ internal sealed class HelpWindow : Form
 {
     private static HelpWindow s_instance = null!;
     private readonly TextBox _textBox;
+    private readonly Font _windowFont;
 
     private static readonly string s_helpText = @"MICMUTE — Global Microphone Mute Toggle
 
@@ -77,7 +78,8 @@ Right-click the tray icon → ""Mic Source"" to choose which microphone MicMute 
         Text = "MicMute v" + Config.Version + " \u2014 Help";
         TopMost = true;
         BackColor = Color.White;
-        Font = new Font("Segoe UI", 9f);
+        _windowFont = new Font("Segoe UI", 9f);
+        Font = _windowFont;
         ClientSize = new Size(460, 420);
         MinimumSize = new Size(400, 300);
 
@@ -99,6 +101,13 @@ Right-click the tray icon → ""Mic Source"" to choose which microphone MicMute 
         };
 
         FormClosed += (_, _) => s_instance = null!;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _windowFont?.Dispose();
+        base.Dispose(disposing);
     }
 
     public static void ShowInstance()

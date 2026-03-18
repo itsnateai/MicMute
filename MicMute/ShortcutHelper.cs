@@ -22,23 +22,28 @@ internal static class ShortcutHelper
                     System.Reflection.BindingFlags.InvokeMethod, null, shell,
                     new object[] { shortcutPath })!;
 
-                var scType = shortcut.GetType();
-                scType.InvokeMember("TargetPath",
-                    System.Reflection.BindingFlags.SetProperty, null, shortcut,
-                    new object[] { targetPath });
-                scType.InvokeMember("WorkingDirectory",
-                    System.Reflection.BindingFlags.SetProperty, null, shortcut,
-                    new object[] { Path.GetDirectoryName(targetPath) ?? "" });
-                scType.InvokeMember("Description",
-                    System.Reflection.BindingFlags.SetProperty, null, shortcut,
-                    new object[] { "MicMute \u2014 Global mic mute toggle" });
-                scType.InvokeMember("IconLocation",
-                    System.Reflection.BindingFlags.SetProperty, null, shortcut,
-                    new object[] { targetPath + ",0" });
-                scType.InvokeMember("Save",
-                    System.Reflection.BindingFlags.InvokeMethod, null, shortcut, null);
-
-                Marshal.ReleaseComObject(shortcut);
+                try
+                {
+                    var scType = shortcut.GetType();
+                    scType.InvokeMember("TargetPath",
+                        System.Reflection.BindingFlags.SetProperty, null, shortcut,
+                        new object[] { targetPath });
+                    scType.InvokeMember("WorkingDirectory",
+                        System.Reflection.BindingFlags.SetProperty, null, shortcut,
+                        new object[] { Path.GetDirectoryName(targetPath) ?? "" });
+                    scType.InvokeMember("Description",
+                        System.Reflection.BindingFlags.SetProperty, null, shortcut,
+                        new object[] { "MicMute \u2014 Global mic mute toggle" });
+                    scType.InvokeMember("IconLocation",
+                        System.Reflection.BindingFlags.SetProperty, null, shortcut,
+                        new object[] { targetPath + ",0" });
+                    scType.InvokeMember("Save",
+                        System.Reflection.BindingFlags.InvokeMethod, null, shortcut, null);
+                }
+                finally
+                {
+                    Marshal.ReleaseComObject(shortcut);
+                }
             }
             finally
             {

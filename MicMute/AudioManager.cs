@@ -49,11 +49,15 @@ internal sealed class AudioManager : IDisposable
     /// </summary>
     public bool Initialize(string deviceId)
     {
+        // Allow re-initialization even after Dispose (e.g. device hotplug)
+        _disposed = false;
         Release();
 
+        var clsid = CLSID_MMDeviceEnumerator;
+        var iid = IID_IMMDeviceEnumerator;
         nint pEnum = 0;
-        int hr = CoCreateInstance(ref CLSID_MMDeviceEnumerator, 0, 1 /*CLSCTX_INPROC_SERVER*/,
-            ref IID_IMMDeviceEnumerator, out pEnum);
+        int hr = CoCreateInstance(ref clsid, 0, 1 /*CLSCTX_INPROC_SERVER*/,
+            ref iid, out pEnum);
         if (hr < 0 || pEnum == 0)
             return false;
 
@@ -205,8 +209,12 @@ internal sealed class AudioManager : IDisposable
             return false;
         try
         {
-            ComCall_GetMuteStatic(pAEV, out int muted);
-            return muted != 0;
+            int hr = ComCall_GetMuteStatic(pAEV, out int muted);
+            return hr >= 0 && muted != 0;
+        }
+        catch
+        {
+            return false;
         }
         finally
         {
@@ -225,6 +233,10 @@ internal sealed class AudioManager : IDisposable
         try
         {
             ComCall_SetMuteStatic(pAEV, muted ? 1 : 0);
+        }
+        catch
+        {
+            // Speaker mute is best-effort
         }
         finally
         {

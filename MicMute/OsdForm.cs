@@ -1,15 +1,15 @@
 namespace MicMute;
 
 /// <summary>
-/// Borderless, always-on-top, click-through OSD overlay that shows mute state.
-/// Positioned above the taskbar, auto-dismisses after a configurable duration.
+/// Borderless, always-on-top, click-through OSD overlay that shows mute state
+/// or arbitrary notification text. Positioned above the taskbar, auto-dismisses.
 /// </summary>
 internal sealed class OsdForm : Form
 {
     private readonly System.Windows.Forms.Timer _dismissTimer;
     private bool _disposed;
 
-    // Cached brushes and font — created once, reused
+    // Cached brushes and font — created once, reused across the app lifetime
     private static readonly Font s_dotFont = new("Segoe UI", 10f);
     private static readonly Font s_labelFont = new("Segoe UI Semibold", 9f);
     private static readonly SolidBrush s_bgBrush = new(Color.FromArgb(0x1E, 0x1E, 0x1E));
@@ -17,12 +17,13 @@ internal sealed class OsdForm : Form
     private static readonly SolidBrush s_mutedDotBrush = new(Color.FromArgb(0xE0, 0x40, 0x40));
     private static readonly SolidBrush s_activeDotBrush = new(Color.FromArgb(0x2E, 0xCC, 0x71));
 
-    // Cached display strings
+    // Cached display strings for mute state
     private static readonly string s_mutedLabel = "Mic Muted";
     private static readonly string s_activeLabel = "Mic Active";
     private const string DotChar = "\u25CF"; // ●
 
     private bool _showMuted;
+    private string _customText;
 
     public OsdForm()
     {
@@ -55,22 +56,41 @@ internal sealed class OsdForm : Form
 
     protected override bool ShowWithoutActivation => true;
 
+    /// <summary>
+    /// Show the OSD with standard mute/active state display.
+    /// </summary>
     public void ShowOsd(bool muted, int durationMs)
     {
         _showMuted = muted;
+        _customText = null;
+        ShowInternal(muted ? s_mutedLabel : s_activeLabel, durationMs);
+    }
 
+    /// <summary>
+    /// Show the OSD with custom notification text.
+    /// </summary>
+    public void ShowNotification(string text, bool isMuted, int durationMs)
+    {
+        _showMuted = isMuted;
+        _customText = text;
+        ShowInternal(text, durationMs);
+    }
+
+    private void ShowInternal(string displayText, int durationMs)
+    {
         // Measure text
         using var g = CreateGraphics();
-        var labelSize = g.MeasureString(muted ? s_mutedLabel : s_activeLabel, s_labelFont);
+        var labelSize = g.MeasureString(displayText, s_labelFont);
         int w = 12 + 14 + (int)labelSize.Width + 16;
         int h = 32;
 
         // Position above taskbar
-        int xPos = Screen.PrimaryScreen!.WorkingArea.Right - w - 12;
-        int yPos = Screen.PrimaryScreen!.WorkingArea.Bottom - h - 8;
+        var screen = Screen.PrimaryScreen ?? Screen.AllScreens[0];
+        int xPos = screen.WorkingArea.Right - w - 12;
+        int yPos = screen.WorkingArea.Bottom - h - 8;
 
         // Try to find taskbar for more precise positioning
-        nint trayHwnd = NativeMethods.FindWindow("Shell_TrayWnd", null!);
+        nint trayHwnd = NativeMethods.FindWindow("Shell_TrayWnd", "");
         if (trayHwnd != 0)
         {
             if (NativeMethods.GetWindowRect(trayHwnd, out var rect))
@@ -112,7 +132,9 @@ internal sealed class OsdForm : Form
 
         var dotBrush = _showMuted ? s_mutedDotBrush : s_activeDotBrush;
         g.DrawString(DotChar, s_dotFont, dotBrush, 12, 6);
-        g.DrawString(_showMuted ? s_mutedLabel : s_activeLabel, s_labelFont, s_textBrush, 28, 6);
+
+        string label = _customText ?? (_showMuted ? s_mutedLabel : s_activeLabel);
+        g.DrawString(label, s_labelFont, s_textBrush, 28, 6);
     }
 
     protected override void Dispose(bool disposing)

@@ -7,6 +7,8 @@ internal sealed class SettingsDialog : Form
 {
     private readonly Config _config;
     private readonly Action _onApply;
+    private readonly Font _dialogFont;
+    private readonly List<Font> _sectionFonts = new();
 
     // Behavior
     private readonly CheckBox _chkSoundFeedback;
@@ -42,7 +44,8 @@ internal sealed class SettingsDialog : Form
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.White;
-        Font = new Font("Segoe UI", 9f);
+        _dialogFont = new Font("Segoe UI", 9f);
+        Font = _dialogFont;
         AutoScaleMode = AutoScaleMode.Dpi;
 
         int y = 14;
@@ -193,10 +196,12 @@ internal sealed class SettingsDialog : Form
 
     private void AddSectionHeader(string text, int x, ref int y)
     {
+        var boldFont = new Font("Segoe UI", 9f, FontStyle.Bold);
+        _sectionFonts.Add(boldFont);
         var label = new Label
         {
             Text = text,
-            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+            Font = boldFont,
             ForeColor = Color.FromArgb(0x44, 0x44, 0x44),
             AutoSize = true,
             Location = new Point(x, y),
@@ -278,5 +283,17 @@ internal sealed class SettingsDialog : Form
         if (string.IsNullOrEmpty(path))
             return "(none)";
         return Path.GetFileName(path);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _dialogFont?.Dispose();
+            foreach (var f in _sectionFonts)
+                f.Dispose();
+            _sectionFonts.Clear();
+        }
+        base.Dispose(disposing);
     }
 }

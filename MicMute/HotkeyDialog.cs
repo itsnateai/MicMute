@@ -8,6 +8,7 @@ internal sealed class HotkeyDialog : Form
 {
     private readonly TextBox _rawTextBox;
     private readonly Label _currentLabel;
+    private readonly Font _dialogFont;
 
     public string ResultHotkey { get; private set; } = "";
 
@@ -19,7 +20,8 @@ internal sealed class HotkeyDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        Font = new Font("Segoe UI", 10f);
+        _dialogFont = new Font("Segoe UI", 10f);
+        Font = _dialogFont;
         ClientSize = new Size(320, 160);
 
         var label = new Label
@@ -71,5 +73,12 @@ internal sealed class HotkeyDialog : Form
         };
         Controls.Add(btnCancel);
         CancelButton = btnCancel;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _dialogFont?.Dispose();
+        base.Dispose(disposing);
     }
 }

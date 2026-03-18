@@ -18,9 +18,12 @@ internal sealed class TrayApp : Form
     private readonly System.Windows.Forms.Timer _syncTimer;
     private readonly OsdForm _osdForm;
 
-    // Cached icons — loaded once at startup
+    // Cached icons — loaded once at startup, reloaded on settings change
     private Icon _iconActive;
     private Icon _iconMuted;
+    // Track whether icons are system icons (must not be disposed)
+    private bool _iconActiveIsSystem;
+    private bool _iconMutedIsSystem;
 
     // State
     private bool _muted;
@@ -37,7 +40,6 @@ internal sealed class TrayApp : Form
     // Cached tooltip strings — only rebuilt on state change
     private string _cachedTooltipMuted = "";
     private string _cachedTooltipActive = "";
-    private string _cachedTooltipMode = "";
     private bool _tooltipDirty = true;
 
     // Track registered hotkeys for cleanup
@@ -50,6 +52,9 @@ internal sealed class TrayApp : Form
     // Device menu lazy loading
     private ToolStripMenuItem _deviceMenuItem;
     private bool _deviceMenuPopulated;
+
+    // Reusable bold font for menu title (disposed in cleanup)
+    private Font _menuTitleFont;
 
     private bool _disposed;
 
@@ -125,12 +130,14 @@ internal sealed class TrayApp : Form
 
     private void LoadIcons()
     {
-        _iconActive = LoadIcon(_config.IconActive, "mic_on.ico");
-        _iconMuted = LoadIcon(_config.IconMuted, "mic_off.ico");
+        _iconActive = LoadIcon(_config.IconActive, "mic_on.ico", out _iconActiveIsSystem);
+        _iconMuted = LoadIcon(_config.IconMuted, "mic_off.ico", out _iconMutedIsSystem);
     }
 
-    private static Icon LoadIcon(string customPath, string embeddedName)
+    private static Icon LoadIcon(string customPath, string embeddedName, out bool isSystemIcon)
     {
+        isSystemIcon = false;
+
         // Priority: custom path > file on disk next to exe > embedded resource
         if (!string.IsNullOrEmpty(customPath) && File.Exists(customPath))
         {
@@ -138,21 +145,33 @@ internal sealed class TrayApp : Form
             catch { /* fall through */ }
         }
 
-        string dir = Path.GetDirectoryName(Environment.ProcessPath ?? "") ?? "";
-        string diskPath = Path.Combine(dir, embeddedName);
-        if (File.Exists(diskPath))
+        string dir = Path.GetDirectoryName(Environment.ProcessPath ?? "")
+            ?? AppDomain.CurrentDomain.BaseDirectory;
+        if (!string.IsNullOrEmpty(dir))
         {
-            try { return new Icon(diskPath); }
-            catch { /* fall through */ }
+            string diskPath = Path.Combine(dir, embeddedName);
+            if (File.Exists(diskPath))
+            {
+                try { return new Icon(diskPath); }
+                catch { /* fall through */ }
+            }
         }
 
         // Embedded resource
-        var stream = typeof(TrayApp).Assembly.GetManifestResourceStream(embeddedName);
+        using var stream = typeof(TrayApp).Assembly.GetManifestResourceStream(embeddedName);
         if (stream != null)
             return new Icon(stream);
 
-        // Ultimate fallback — system icon
-        return SystemIcons.Application;
+        // Ultimate fallback — clone the system icon so it's safe to dispose
+        isSystemIcon = true;
+        return (Icon)SystemIcons.Application.Clone();
+    }
+
+    private void DisposeIcons()
+    {
+        // Safe to dispose — we always own these (cloned system icons or loaded from file/resource)
+        _iconActive?.Dispose();
+        _iconMuted?.Dispose();
     }
 
     // ── Tray Icon / Tooltip ──────────────────────────────────────────────
@@ -161,9 +180,9 @@ internal sealed class TrayApp : Form
     {
         string modeName = _config.Mode == "push-to-talk" ? " [PTT]" : "";
         string suffix = _deafened ? " [DEAFENED]" : "";
-        _cachedTooltipMode = modeName + suffix;
-        _cachedTooltipMuted = "MicMute v" + Config.Version + " \u2014 Mic: MUTED" + _cachedTooltipMode;
-        _cachedTooltipActive = "MicMute v" + Config.Version + " \u2014 Mic: Active" + _cachedTooltipMode;
+        string combined = modeName + suffix;
+        _cachedTooltipMuted = "MicMute v" + Config.Version + " \u2014 Mic: MUTED" + combined;
+        _cachedTooltipActive = "MicMute v" + Config.Version + " \u2014 Mic: Active" + combined;
         _tooltipDirty = false;
     }
 
@@ -246,8 +265,9 @@ internal sealed class TrayApp : Form
         string soundFile = _muted ? _config.MuteSound : _config.UnmuteSound;
         if (!string.IsNullOrEmpty(soundFile) && File.Exists(soundFile))
         {
+            // Use SND_ASYNC to avoid blocking the UI thread
             if (!NativeMethods.PlaySound(soundFile, 0,
-                NativeMethods.SND_FILENAME | NativeMethods.SND_SYNC | NativeMethods.SND_NODEFAULT))
+                NativeMethods.SND_FILENAME | NativeMethods.SND_ASYNC | NativeMethods.SND_NODEFAULT))
             {
                 PlayToneSequence(_muted);
             }
@@ -260,6 +280,7 @@ internal sealed class TrayApp : Form
 
     private static void PlayToneSequence(bool muted)
     {
+        // kernel32.Beep is synchronous but only 80ms — acceptable brief block
         NativeMethods.Beep(muted ? 587u : 880u, 80);
     }
 
@@ -452,20 +473,16 @@ internal sealed class TrayApp : Form
 
     // ── Push-to-Talk ─────────────────────────────────────────────────────
     // Win32 RegisterHotKey doesn't directly support key-up events.
-    // We use a low-level approach: on WM_HOTKEY, unmute and start polling
-    // for key release via a short timer, then re-mute on release.
+    // On WM_HOTKEY, unmute and poll for key release via a timer, then re-mute.
 
     private System.Windows.Forms.Timer _pttTimer;
     private uint _pttVk;
-
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
 
     private void HandlePushToTalk()
     {
         SetMuteState(false, true); // unmute while held
 
-        // Parse the VK for polling
+        // Cache the VK for polling (avoids re-parsing on every timer tick)
         if (!Config.ParseHotkey(_config.Hotkey, out _, out uint vk))
             return;
         _pttVk = vk;
@@ -482,7 +499,7 @@ internal sealed class TrayApp : Form
     private void OnPttPoll(object sender, EventArgs e)
     {
         // Check if the key is still held
-        short state = GetAsyncKeyState((int)_pttVk);
+        short state = NativeMethods.GetAsyncKeyState((int)_pttVk);
         bool held = (state & 0x8000) != 0;
         if (!held)
         {
@@ -554,13 +571,18 @@ internal sealed class TrayApp : Form
 
     private void BuildTrayMenu()
     {
-        _trayMenu.Items.Clear();
+        // Dispose old menu items before clearing to prevent GDI/memory leaks
+        DisposeMenuItems();
 
         string hotkeyReadable = Config.HotkeyToReadable(_config.Hotkey);
 
+        // Reusable bold font for title item
+        _menuTitleFont?.Dispose();
+        _menuTitleFont = new Font(_trayMenu.Font, FontStyle.Bold);
+
         // Title / toggle
         var titleItem = new ToolStripMenuItem("Toggle Mute \u2014 v" + Config.Version);
-        titleItem.Font = new Font(_trayMenu.Font, FontStyle.Bold);
+        titleItem.Font = _menuTitleFont;
         titleItem.Click += (_, _) => ToggleMute();
         _trayMenu.Items.Add(titleItem);
         _trayMenu.Items.Add(new ToolStripSeparator());
@@ -625,6 +647,26 @@ internal sealed class TrayApp : Form
         _trayMenu.Items.Add(exitItem);
     }
 
+    /// <summary>
+    /// Dispose all current menu items before rebuilding the menu.
+    /// ToolStripItemCollection.Clear() does NOT dispose items.
+    /// </summary>
+    private void DisposeMenuItems()
+    {
+        for (int i = _trayMenu.Items.Count - 1; i >= 0; i--)
+        {
+            var item = _trayMenu.Items[i];
+            // Dispose sub-items recursively for ToolStripMenuItems with dropdowns
+            if (item is ToolStripMenuItem menuItem)
+            {
+                for (int j = menuItem.DropDownItems.Count - 1; j >= 0; j--)
+                    menuItem.DropDownItems[j].Dispose();
+            }
+            item.Dispose();
+        }
+        _trayMenu.Items.Clear();
+    }
+
     private void OnDeviceMenuOpening(object sender, EventArgs e)
     {
         if (_deviceMenuPopulated)
@@ -634,6 +676,9 @@ internal sealed class TrayApp : Form
 
     private void PopulateDeviceMenu()
     {
+        // Dispose old placeholder items
+        for (int i = _deviceMenuItem.DropDownItems.Count - 1; i >= 0; i--)
+            _deviceMenuItem.DropDownItems[i].Dispose();
         _deviceMenuItem.DropDownItems.Clear();
 
         var defaultItem = new ToolStripMenuItem("System Default");
@@ -751,10 +796,18 @@ internal sealed class TrayApp : Form
 
     private void OnSettingsApplied()
     {
-        // Reload icons if custom paths changed
-        _iconActive?.Dispose();
-        _iconMuted?.Dispose();
+        // Load new icons first, then swap and dispose old ones
+        var oldActive = _iconActive;
+        var oldMuted = _iconMuted;
+
         LoadIcons();
+
+        // Update tray icon to reference the new icons before disposing old ones
+        SetTrayIcon();
+
+        // Now safe to dispose old icons
+        oldActive?.Dispose();
+        oldMuted?.Dispose();
 
         // Re-register hotkeys
         RegisterDeafenHotkey();
@@ -783,8 +836,8 @@ internal sealed class TrayApp : Form
 
     private void ShowTimedTooltip(string text, int durationMs)
     {
-        // Reuse the OSD form for transient notifications (avoids BalloonTip toasts)
-        _osdForm.ShowOsd(_muted, Math.Min(durationMs, 3000));
+        // Show notification with actual text in the OSD
+        _osdForm.ShowNotification(text, _muted, Math.Min(durationMs, 3000));
     }
 
     // ── Exit & Cleanup ───────────────────────────────────────────────────
@@ -829,16 +882,17 @@ internal sealed class TrayApp : Form
             // Dispose OSD
             _osdForm.Dispose();
 
-            // Dispose tray icon
+            // Dispose tray icon (set invisible first)
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
 
-            // Dispose menu
+            // Dispose menu items then menu
+            DisposeMenuItems();
             _trayMenu.Dispose();
+            _menuTitleFont?.Dispose();
 
             // Dispose icons
-            _iconActive?.Dispose();
-            _iconMuted?.Dispose();
+            DisposeIcons();
 
             // Dispose audio
             _audio.Dispose();

@@ -31,8 +31,10 @@ internal sealed class Config
     private readonly string _iniPath;
 
     // Pre-compiled regex for hotkey parsing
-    private static readonly Regex s_modifierPrefix = new(@"^[<>#^!+]+", RegexOptions.Compiled);
-    private static readonly Regex s_stripModifiers = new(@"^[<>#^!+~*$<>]+", RegexOptions.Compiled);
+    // s_modifierPrefix captures recognized modifier symbols for parsing
+    // s_stripModifiers strips ALL AHK prefix symbols including ~*$ (passthrough/wildcard/hook)
+    private static readonly Regex s_modifierPrefix = new(@"^[<>#^!+~*$]+", RegexOptions.Compiled);
+    private static readonly Regex s_stripModifiers = new(@"^[<>#^!+~*$]+", RegexOptions.Compiled);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern uint GetPrivateProfileString(
@@ -46,7 +48,10 @@ internal sealed class Config
 
     public Config()
     {
-        string dir = Path.GetDirectoryName(Environment.ProcessPath ?? "") ?? "";
+        string dir = Path.GetDirectoryName(Environment.ProcessPath ?? "")
+            ?? AppDomain.CurrentDomain.BaseDirectory;
+        if (string.IsNullOrEmpty(dir))
+            dir = AppDomain.CurrentDomain.BaseDirectory;
         _iniPath = Path.Combine(dir, "MicMute.ini");
     }
 
