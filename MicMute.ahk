@@ -920,8 +920,6 @@ ApplySettingsGUI(dlg, close := true) {
     if close {
         dlg.Destroy()
         g_settingsGui := 0
-    }
-    if close {
         ToolTip("Settings saved.")
         SetTimer(() => ToolTip(), -3000)
     } else {
@@ -986,6 +984,11 @@ EnumCaptureDevices() {
         if (hr = 0 && pIdStr) {
             devId := StrGet(pIdStr, "UTF-16")
             DllCall("ole32\CoTaskMemFree", "Ptr", pIdStr)
+        }
+        ; Skip device if GetId failed — no point querying property store
+        if (devId = "") {
+            ObjRelease(pDev)
+            continue
         }
 
         ; OpenPropertyStore(STGM_READ=0)
@@ -1317,7 +1320,7 @@ OnTaskbarCreated(*) {
 
 ; Release COM handle and clean up on exit.
 Cleanup(*) {
-    global g_pAEV, g_muted
+    global g_pAEV, g_muted, g_hotkey, g_deafenHotkey
     global g_deafened, g_speakerWasMuted
     global g_osdGui, g_settingsGui, g_helpGui
 
@@ -1325,6 +1328,12 @@ Cleanup(*) {
     SetTimer(SyncMuteState, 0)
     SetTimer(FlashTick, 0)
     SetTimer(DismissOSD, 0)
+
+    ; ── Unregister hotkeys to avoid dangling system-wide bindings ──
+    if (g_hotkey != "")
+        try Hotkey(g_hotkey, "Off")
+    if (g_deafenHotkey != "")
+        try Hotkey(g_deafenHotkey, "Off")
 
     ; ── Destroy any open GUI windows ──
     if g_osdGui {
