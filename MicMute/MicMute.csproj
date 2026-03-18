@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>..\mic_on.ico</ApplicationIcon>
+    <Version>1.8.3</Version>
+    <AssemblyName>MicMute</AssemblyName>
+    <RootNamespace>MicMute</RootNamespace>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\mic_on.ico" LogicalName="mic_on.ico" />
+    <EmbeddedResource Include="..\mic_off.ico" LogicalName="mic_off.ico" />
+  </ItemGroup>
+
+</Project>
