@@ -21,10 +21,6 @@ internal sealed class TrayApp : Form
     // Cached icons — loaded once at startup, reloaded on settings change
     private Icon _iconActive;
     private Icon _iconMuted;
-    // Track whether icons are system icons (must not be disposed)
-    private bool _iconActiveIsSystem;
-    private bool _iconMutedIsSystem;
-
     // State
     private bool _muted;
     private bool _deafened;
@@ -130,14 +126,12 @@ internal sealed class TrayApp : Form
 
     private void LoadIcons()
     {
-        _iconActive = LoadIcon(_config.IconActive, "mic_on.ico", out _iconActiveIsSystem);
-        _iconMuted = LoadIcon(_config.IconMuted, "mic_off.ico", out _iconMutedIsSystem);
+        _iconActive = LoadIcon(_config.IconActive, "mic_on.ico");
+        _iconMuted = LoadIcon(_config.IconMuted, "mic_off.ico");
     }
 
-    private static Icon LoadIcon(string customPath, string embeddedName, out bool isSystemIcon)
+    private static Icon LoadIcon(string customPath, string embeddedName)
     {
-        isSystemIcon = false;
-
         // Priority: custom path > file on disk next to exe > embedded resource
         if (!string.IsNullOrEmpty(customPath) && File.Exists(customPath))
         {
@@ -163,7 +157,6 @@ internal sealed class TrayApp : Form
             return new Icon(stream);
 
         // Ultimate fallback — clone the system icon so it's safe to dispose
-        isSystemIcon = true;
         return (Icon)SystemIcons.Application.Clone();
     }
 

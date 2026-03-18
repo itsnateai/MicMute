@@ -7,7 +7,6 @@ namespace MicMute;
 internal sealed class HotkeyDialog : Form
 {
     private readonly TextBox _rawTextBox;
-    private readonly Label _currentLabel;
     private readonly Font _dialogFont;
 
     public string ResultHotkey { get; private set; } = "";
@@ -39,14 +38,14 @@ internal sealed class HotkeyDialog : Form
         };
         Controls.Add(_rawTextBox);
 
-        _currentLabel = new Label
+        var currentLabel = new Label
         {
             Text = "Current: " + Config.HotkeyToReadable(currentHotkey),
             ForeColor = Color.Gray,
             AutoSize = true,
             Location = new Point(16, 76),
         };
-        Controls.Add(_currentLabel);
+        Controls.Add(currentLabel);
 
         var btnOK = new Button
         {

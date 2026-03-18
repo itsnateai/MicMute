@@ -51,7 +51,6 @@ internal sealed class SettingsDialog : Form
         int y = 14;
         int leftMargin = 16;
         int indent = 28;
-        int fieldWidth = 410;
 
         // ── Behavior ──
         AddSectionHeader("Behavior", leftMargin, ref y);
